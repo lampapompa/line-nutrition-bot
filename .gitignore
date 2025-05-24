@@ -1,0 +1,17 @@
+# Python-related
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+*.tmp
+*.db
+
+# macOS
+.DS_Store
+
+# 環境設定
+.env
+.env.*
+
+# VSCode 使用者
+.vscode/
