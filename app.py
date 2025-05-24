@@ -39,6 +39,7 @@ def handle_message(event):
     user_msg = event.message.text
 
     # 呼叫 GPT 模型直接回應
+    print("⚡️ Calling OpenAI GPT with message:", user_msg)
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -52,7 +53,9 @@ def handle_message(event):
         reply = response['choices'][0]['message']['content'].strip()
     except Exception as e:
         reply = "目前無法回覆，請稍後再試 🙇‍♂️"
+print("✅ GPT reply:", reply)
 
+    
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
@@ -61,4 +64,4 @@ def handle_message(event):
 # 啟動服務，確保綁定 port（如 render 預設會給 PORT 環境變數）
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
