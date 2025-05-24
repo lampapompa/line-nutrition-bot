@@ -1,3 +1,4 @@
-Flask
+flask
 line-bot-sdk
 openai
+redis
