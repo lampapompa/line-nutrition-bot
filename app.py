@@ -117,31 +117,44 @@ def send_delayed_response(event, reply_text):
     time.sleep(delay_seconds) # 執行延遲
 
     # 分段處理：將長回覆拆分成多條訊息，然後一次性發送
-    if reply_length > 50: # 對於較長的訊息進行分段
-        sentences = []
-        current_sentence_start = 0
-        for i, char in enumerate(reply_text):
-            # 以中文標點符號和換行符進行分段
-            if char in ['。', '！', '？', '\n', '，'] and i > current_sentence_start:
-                sentence = reply_text[current_sentence_start:i+1].strip()
-                if sentence:
-                    sentences.append(sentence)
-                current_sentence_start = i + 1
-        
-        # 處理最後一段可能沒有標點符號的情況
-        if current_sentence_start < reply_length:
-            last_segment = reply_text[current_sentence_start:].strip()
-            if last_segment:
-                sentences.append(last_segment)
-        
-        # 如果分段成功，將每個句子作為一個 TextSendMessage
-        if sentences:
-            for sentence in sentences:
+    # 限制每段訊息長度約在 50 個字，且總訊息不超過 5 條
+    max_segment_length = 50 
+    max_messages = 5
+
+    sentences = []
+    if reply_length > max_segment_length:
+        current_segment = ""
+        for char in reply_text:
+            current_segment += char
+            if len(current_segment) >= max_segment_length and char in ['。', '！', '？', '\n', '，', ' ']: # 嘗試在標點符號或空格處分段
+                sentences.append(current_segment.strip())
+                current_segment = ""
+                if len(sentences) >= max_messages: # 達到最大訊息數，停止分段
+                    break
+        if current_segment and len(sentences) < max_messages: # 添加最後一段
+            sentences.append(current_segment.strip())
+    else:
+        sentences.append(reply_text.strip()) # 短回覆直接加入
+
+    # 確保最終至少有一條訊息，且不超過最大限制
+    if not sentences:
+        messages_to_send.append(TextSendMessage(text="抱歉，沒有內容可以回覆。"))
+    else:
+        for i, sentence in enumerate(sentences):
+            if i < max_messages: # 確保不超過 5 條訊息
                 messages_to_send.append(TextSendMessage(text=sentence))
-        else: # 如果因為特殊情況沒分成功，就整段發送
-            messages_to_send.append(TextSendMessage(text=reply_text))
-    else: # 短回覆直接發送
-        messages_to_send.append(TextSendMessage(text=reply_text))
+            else:
+                # 如果超出了 5 條，可以在最後一條加上提示
+                if i == max_messages: # 只對第六條訊息做一次這個操作
+                    messages_to_send[-1].text += " (訊息過長，請見完整回覆...)"
+                break # 超過 5 條後停止添加
+
+    # 新增 debug log 來驗證 messages_to_send 的內容和長度
+    print(f"DEBUG: Preparing to send {len(messages_to_send)} messages.")
+    if messages_to_send:
+        print(f"DEBUG: First message text content: {messages_to_send[0].text[:50]}...") # 只印前50字
+    else:
+        print("DEBUG: messages_to_send is empty!")
 
     # 發送回覆
     try:
@@ -199,23 +212,6 @@ def handle_text_message(event):
         if any(keyword in user_input for keyword in image_analysis_keywords):
             is_image_analysis_intent = True
         
-        # 也可以用 GPT 判斷意圖，但會消耗更多 Token
-        # try:
-        #     intent_judgment = client.chat.completions.create(
-        #         model="gpt-3.5-turbo", # 較快的模型判斷意圖
-        #         messages=[
-        #             {"role": "system", "content": "判斷用戶的問題是否是關於分析他們剛才上傳的圖片（例如估算熱量、識別內容）。只回覆 '是' 或 '否'。"},
-        #             {"role": "user", "content": user_input}
-        #         ],
-        #         temperature=0
-        #     ).choices[0].message.content.strip().lower()
-        #     if intent_judgment == '是':
-        #         is_image_analysis_intent = True
-        # except Exception as e:
-        #     print(f"ERROR: GPT intent judgment failed for image: {e}")
-        #     traceback.print_exc()
-        #     # 如果判斷失敗，為了保險起見，可以假設為意圖不明，不執行圖片分析
-
         if is_image_analysis_intent:
             print(f"DEBUG: User {user_id} intends to analyze pending image.")
             # 清除待處理圖片標記，避免重複處理
@@ -241,12 +237,12 @@ def handle_text_message(event):
                         {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": f"請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。用戶的問題是：'{user_input}'。請用親切口語化的方式回覆。"},
+                                {"type": "text", "text": f"請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。用戶的問題是：'{user_input}'。請用親切口語化的方式回覆。**回覆請務必簡潔，像在 LINE 上聊天一樣，不要過於冗長，將核心資訊傳達清楚即可。**"}, # <<< 在這裡的文字提示中加入簡潔要求
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                             ]
                         }
                     ],
-                    max_tokens=1000,
+                    max_tokens=400, # <<< 將這裡從 1000 調整到 400 (或 300-500 之間嘗試)
                     temperature=0.7 
                 )
                 reply_text = vision_response.choices[0].message.content.strip()
@@ -310,7 +306,9 @@ def handle_text_message(event):
         try:
             # 強化的 System Prompt for "真人感"
             system_prompt_content = """
-            你是一位溫暖、友善、專業且富有同理心的營養師助理。請以口語化、親切自然的語氣進行回覆，就像一位真正的朋友在與人交流。
+            你是一位溫暖、友善、專業且富有同理心的營養師助理。
+            請以口語化、親切自然的語氣進行回覆，就像一位真正的朋友在與人交流。
+            **非常重要：請務必保持簡潔，像在 LINE 上聊天一樣，不要過於冗長。盡量使用短句子，將核心資訊傳達清楚即可。**
             在回答時，除了提供專業的營養知識外，也可以適時加入一些鼓勵、關心或幽默的語氣。
             請簡潔明瞭地回答問題，避免過度冗長或生硬的專業術語。
             盡量在回答中加入表情符號，讓回覆更生動。
@@ -322,7 +320,7 @@ def handle_text_message(event):
                     {"role": "user", "content": user_input}
                 ],
                 temperature=0.8, # 提高一些溫度來增加真人感和多樣性
-                max_tokens=800 # 限制回覆長度，避免冗長，但留足夠空間
+                max_tokens=400 # <<< 將這裡從 800 調整到 400 (或 300-500 之間嘗試)
             )
             print(f"DEBUG: 🎉 OpenAI GPT-4o API call successful. Full response: {response}")
             reply_text = response.choices[0].message.content.strip()
@@ -379,6 +377,12 @@ def handle_image_message(event):
             # 設定 5 分鐘過期時間 (300 秒)，如果用戶超過 5 分鐘沒有提問就忘記這張圖
             r.set(f"pending_image:{user_id}", json.dumps(image_info), ex=300) 
             print(f"DEBUG: Pending image saved to Redis for user {user_id}. Expires in 300s.")
+            
+            # 解決「丟圖沒回應」問題：簡化 initial_reply_text
+            initial_reply_text = "照片收到。请问有什么想问的吗？" # <<< 這裡修改了回覆文字
+            send_delayed_response(event, initial_reply_text)
+            return # <<< 確保這裡有 return，避免後續代碼繼續執行
+
         else:
             print(f"WARNING: Redis not initialized. Cannot save pending image for user {user_id}. Image will be processed immediately without pending logic.")
             # 如果 Redis 沒有初始化，或者連線失敗，則退回到立即處理模式 (無狀態模式)
@@ -395,21 +399,17 @@ def handle_image_message(event):
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。如果可以，請提供一些營養師的建議，例如是否有營養缺口，或者可以如何搭配。請用親切口語化的方式回覆。"},
+                            {"type": "text", "text": "請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。如果可以，請提供一些營養師的建議，例如是否有營養缺口，或者可以如何搭配。請用親切口語化的方式回覆。**回覆請務必簡潔，像在 LINE 上聊天一樣，不要過於冗長，將核心資訊傳達清楚即可。**"}, # <<< 在這裡的文字提示中加入簡潔要求
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }
                 ],
-                max_tokens=1000,
+                max_tokens=400, # <<< 將這裡從 1000 調整到 400 (或 300-500 之間嘗試)
                 temperature=0.7 
             )
             reply_text = vision_response.choices[0].message.content.strip()
             send_delayed_response(event, reply_text)
             return # 處理完畢直接返回，因為沒有等待邏輯
-
-        # 3. 回覆用戶，告知圖片已收到，並等待指令 (僅在 Redis 儲存成功時才發送此訊息)
-        initial_reply_text = "照片收到囉！😊 請問有什麼想問這張照片的嗎？比如估算熱量、識別食物，還是需要其他建議呢？"
-        send_delayed_response(event, initial_reply_text)
 
     except AuthenticationError as e:
         print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
