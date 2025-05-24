@@ -3,8 +3,8 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
-import time
 import random
+import time
 
 app = Flask(__name__)
 
@@ -18,41 +18,73 @@ def callback():
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
-    except:
+    except Exception as e:
+        print("Webhook error:", e)
         abort(400)
     return "OK"
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    user_msg = event.message.text
-    keywords = [
-        "吃什麼", "熱量", "減肥", "體重", "肥胖", "蛋白質", "便秘", "健康", "瘦身", "脂肪",
-        "三餐", "飲食", "點心", "營養", "糖分", "澱粉", "甜點", "運動", "宵夜", "水腫",
-        "代謝", "腸胃", "腸道", "飢餓", "熱量缺口", "菜單", "高蛋白", "飲料", "代餐", "補品",
-        "維生素", "鈣", "鐵", "益生菌", "消化", "腸道菌", "暴食", "食慾", "斷食", "低醣",
-        "低脂", "高纖維", "正餐", "補充", "挑食", "空腹", "胃痛", "胃食道逆流", "腸躁症", "敏感"
-    ]
-
-    if any(word in user_msg for word in keywords):
-        time.sleep(3)
-        reply = openai.ChatCompletion.create(
+# GPT 判斷是否屬於營養問題
+def is_nutrition_related(msg):
+    try:
+        response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "你是營養專屬小幫手，只回答營養相關的問題，語氣親切、實用、精簡，盡量控制在50字內。"},
-                {"role": "user", "content": user_msg}
-            ]
+                {
+                    "role": "system",
+                    "content": "你是一個盡量擬真的營養師小幫手，你自己知道你是小幫手就好，想辦法用自然語言讓使用者感覺你是真人。使用者傳來的訊息是：「" + msg + "」。這是不是一個和「營養、飲食、熱量、食物、體重、代謝、維生素」相關的問題？如果是，請你回答「是」。如果不是，請你回答「否」。"
+                }
+            ],
+            temperature=0,
+            max_tokens=5,
         )
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=reply.choices[0].message.content)
-        )
-    else:
-        emoji_list = ["💪", "😊", "✨", "👍", "🥦", "🍎", "🌟"]
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=random.choice(emoji_list))
-        )
+        result = response.choices[0].message["content"].strip()
+        return result == "是"
+    except Exception as e:
+        print("判斷錯誤：", e)
+        return False
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# GPT 實際擬真回答
+def generate_nutrition_reply(msg):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是一位真誠、自然、專業的台灣營養師，回應時語氣自然口語化，像人在聊天，可以加入『嗯…』『我想想喔』等語助詞，有時候可加入 😊 😉 💡 等小 emoji。回答字數控制在 80 字內，務求自然不機器。"
+                },
+                {
+                    "role": "user",
+                    "content": msg
+                }
+            ],
+            temperature=0.7,
+            max_tokens=200,
+        )
+        return response.choices[0].message["content"].strip()
+    except Exception as e:
+        print("GPT 回應錯誤：", e)
+        return "我剛剛有點斷線，等等再幫你回答好嗎？"
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_msg = event.message.text.strip()
+    print("收到訊息：", user_msg)
+
+    if is_nutrition_related(user_msg):
+        time.sleep(random.uniform(2, 4))  # 模擬思考延遲
+        reply = generate_nutrition_reply(user_msg)
+    else:
+        emoji_pool = ["😊", "👍", "✨", "😉", "👌", "🙆‍♀️", "😄", "🍀"]
+        reply = random.choice(emoji_pool)
+
+    print("回覆訊息：", reply)
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply)
+    )
+
+# 正確綁定 PORT，避免 Render 無法掃到
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
