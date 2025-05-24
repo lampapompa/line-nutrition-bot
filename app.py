@@ -54,12 +54,11 @@ def handle_message(event):
     except Exception as e:
         reply = "目前無法回覆，請稍後再試 🙇‍♂️"
 print("✅ GPT reply:", reply)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply)
+        )
 
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
 
 # 啟動服務，確保綁定 port（如 render 預設會給 PORT 環境變數）
 if __name__ == "__main__":
