@@ -35,7 +35,7 @@ def callback():
     return 'OK'
 
 # GPT 回應邏輯
-@handler.add(MessageEvent)
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     print("📦 收到的 event 是：", event)
     user_msg = event.message.text
