@@ -53,7 +53,8 @@ def handle_message(event):
         reply = response['choices'][0]['message']['content'].strip()
     except Exception as e:
         reply = "目前無法回覆，請稍後再試 🙇‍♂️"
-print("✅ GPT reply:", reply)
+        
+        print("✅ GPT reply:", reply)
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(text=reply)
