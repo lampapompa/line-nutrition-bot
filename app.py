@@ -35,10 +35,11 @@ def callback():
     return 'OK'
 
 # GPT 回應邏輯
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent)
 def handle_message(event):
-    print("🔑 OpenAI API key:", openai.api_key)
+    print("📦 收到的 event 是：", event)
     user_msg = event.message.text
+
 
     # 呼叫 GPT 模型直接回應
     print("⚡️ Calling OpenAI GPT with message:", user_msg)
