@@ -379,7 +379,7 @@ def handle_image_message(event):
             print(f"DEBUG: Pending image saved to Redis for user {user_id}. Expires in 300s.")
             
             # 解決「丟圖沒回應」問題：簡化 initial_reply_text
-            initial_reply_text = "照片收到。请问有什么想问的吗？" # <<< 這裡修改了回覆文字
+            initial_reply_text = "照片收到，請問想問什麼？" # <<< 這裡修改了回覆文字
             send_delayed_response(event, initial_reply_text)
             return # <<< 確保這裡有 return，避免後續代碼繼續執行
 
