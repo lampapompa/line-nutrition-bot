@@ -14,6 +14,7 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('LINE_CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
+print("🔑 OpenAI API key:", openai.api_key)
 
 # 健康檢查路由
 @app.route('/')
@@ -36,6 +37,7 @@ def callback():
 # GPT 回應邏輯
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    print("🔑 OpenAI API key:", openai.api_key)
     user_msg = event.message.text
 
     # 呼叫 GPT 模型直接回應
