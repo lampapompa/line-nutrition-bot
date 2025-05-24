@@ -32,8 +32,6 @@ if line_channel_access_token and line_channel_secret:
     handler = WebhookHandler(line_channel_secret)
 else:
     print("ERROR: LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is missing. Please set environment variables.")
-    # 在生產環境中，這裡通常會拋出錯誤或執行更嚴格的措施
-    # 但為了讓程式碼能繼續被檢查，我們暫不直接退出
     line_bot_api = None # 確保未初始化
     handler = None # 確保未初始化
 
@@ -180,7 +178,8 @@ def handle_text_message(event):
     user_input = event.message.text
     print(f"DEBUG: 🧾 Received text message from user {user_id}: '{user_input}'")
 
-    reply_text = "目前無法回覆，請稍後再試 🧘" # 預設回覆，以防任何錯誤
+    # 預設回覆，以防任何錯誤
+    reply_text = "目前無法回覆，請稍後再試 🧘" 
 
     if not client:
         print("ERROR: OpenAI client is not initialized. Cannot call GPT.")
@@ -232,17 +231,17 @@ def handle_text_message(event):
                 # ----------------------------------------------------------------
                 print("DEBUG: Calling GPT-4o for image analysis from text handler...")
                 vision_response = client.chat.completions.create(
-                    model="gpt-4o", # *** 這裡指定使用 gpt-4o 模型 ***
+                    model="gpt-4o",
                     messages=[
                         {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": f"請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。用戶的問題是：'{user_input}'。請用親切口語化的方式回覆。**回覆請務必簡潔，像在 LINE 上聊天一樣，不要過於冗長，將核心資訊傳達清楚即可。**"}, # <<< 在這裡的文字提示中加入簡潔要求
+                                {"type": "text", "text": f"請分析這張食物圖片。回覆時，請分兩段提供資訊：\n1. **第一段 (簡潔總結)：** 直接給出這張食物的**總熱量粗估值**，例如：『這份餐點大約XXX卡。』或『這份便當估計是XXX卡。』這段話不要包含任何細節分析，且語氣應中性，避免過於感性。這段話應當簡短有力，不帶任何表情符號。\n2. **第二段 (詳細說明)：** 在第一段之後，換行並列出圖片中食物的種類、估計份量及各自的熱量。在描述份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「「適量」」。\n請用口語化、簡潔自然的語氣回覆，就像在 LINE 上與朋友簡短聊天一樣。**非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**"},
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                             ]
                         }
                     ],
-                    max_tokens=400, # <<< 將這裡從 1000 調整到 400 (或 300-500 之間嘗試)
+                    max_tokens=250,
                     temperature=0.7 
                 )
                 reply_text = vision_response.choices[0].message.content.strip()
@@ -268,85 +267,114 @@ def handle_text_message(event):
 
         else: # 有待處理圖片，但用戶文字與圖片分析無關
             print(f"DEBUG: User {user_id} has pending image, but text is not about image analysis. Replying with reminder.")
-            reply_text = "嗯？這條訊息好像不是在問照片的問題耶！如果你想問照片，記得告訴我喔！不然我可以回答其他關於營養或健康的問題啦！😊"
+            # 調整語氣，更自然、不那麼「巴結」
+            reply_text = "嗯？這條訊息好像不是在問照片的問題耶！如果你想問照片，記得告訴我喔。不然我可以回答其他關於營養或健康的問題啦！"
             send_delayed_response(event, reply_text)
             return # 處理完提醒後就返回
 
     # ----------------------------------------------------------------
-    # 如果沒有待處理圖片，或者文字與圖片無關，則執行原有的文字處理邏輯
+    # 如果沒有待處理圖片，或者文字與圖片無關，則執行文字處理邏輯
     # ----------------------------------------------------------------
-    is_nutrition_related = False
     try:
-        print(f"DEBUG: Stage 1 (Text): Judging if '{user_input}' is nutrition related.")
+        print(f"DEBUG: Stage 1 (Text): Classifying '{user_input}' intent.")
+        # 改變判斷器的提示詞，讓它回覆多種類型
         judgment_response = client.chat.completions.create(
-            model="gpt-3.5-turbo", # 判斷通常用較快的模型
+            model="gpt-3.5-turbo", 
             messages=[
-                {"role": "system", "content": "你是一個判斷器，請判斷用戶提出的問題是否與『營養』、『健康飲食』、『熱量計算』、『食物成分』或『減重』等主題相關。只回覆 '是' 或 '否'。"},
+                {"role": "system", "content": """你是一個訊息分類器。請判斷用戶的訊息屬於以下哪一種類型：
+                - 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。
+                - 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是與營養健康主題無關但仍想與人聊天的內容。
+                - 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
+
+                只回覆分類名稱，不要有其他文字。
+                """},
                 {"role": "user", "content": user_input}
             ],
             temperature=0 # 判斷時，溫度設為 0，確保最確定性的回覆
         )
-        judgment = judgment_response.choices[0].message.content.strip().lower()
-        print(f"DEBUG: Judgment result: '{judgment}'")
+        judgment_category = judgment_response.choices[0].message.content.strip()
+        print(f"DEBUG: Judgment result: '{judgment_category}'")
 
-        if judgment == '是':
-            is_nutrition_related = True
-        
-    except Exception as e:
-        print(f"ERROR: ❌ GPT Judgment call failed: {e}")
-        traceback.print_exc()
-        send_delayed_response(event, "抱歉，我的判斷系統出了點問題，請稍後再試。")
-        return
-
-    # ----------------------------------------------------------------
-    # 第二階段：根據判斷結果進行回覆
-    # ----------------------------------------------------------------
-    if is_nutrition_related:
-        print(f"DEBUG: Stage 2 (Text): Question is nutrition related. Generating detailed response for: '{user_input}'")
-        try:
-            # 強化的 System Prompt for "真人感"
+        if judgment_category == '營養/健康相關':
+            print(f"DEBUG: Stage 2 (Text): Question is nutrition related. Generating detailed response for: '{user_input}'")
+            # 營養師主體回覆邏輯
             system_prompt_content = """
-            你是一位溫暖、友善、專業且富有同理心的營養師助理。
-            請以口語化、親切自然的語氣進行回覆，就像一位真正的朋友在與人交流。
-            **非常重要：請務必保持簡潔，像在 LINE 上聊天一樣，不要過於冗長。盡量使用短句子，將核心資訊傳達清楚即可。**
-            在回答時，除了提供專業的營養知識外，也可以適時加入一些鼓勵、關心或幽默的語氣。
-            請簡潔明瞭地回答問題，避免過度冗長或生硬的專業術語。
-            盡量在回答中加入表情符號，讓回覆更生動。
+            你是一位友善、專業的營養師助理。
+            請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
+            **非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等，直接提供資訊即可。除非必要，否則不需要過度使用表情符號。**
+            在回答時，提供專業的營養知識，避免生硬的專業術語。
+            **在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「適量」。**
             """
             response = client.chat.completions.create(
-                model="gpt-4o", # *** 這裡指定使用 gpt-4o 模型 ***
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt_content},
                     {"role": "user", "content": user_input}
                 ],
-                temperature=0.8, # 提高一些溫度來增加真人感和多樣性
-                max_tokens=400 # <<< 將這裡從 800 調整到 400 (或 300-500 之間嘗試)
+                temperature=0.7,
+                max_tokens=250 
             )
             print(f"DEBUG: 🎉 OpenAI GPT-4o API call successful. Full response: {response}")
             reply_text = response.choices[0].message.content.strip()
             print(f"DEBUG: Generated reply text: '{reply_text}'")
+            send_delayed_response(event, reply_text)
 
-        except AuthenticationError as e:
-            print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
-            reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
-            traceback.print_exc()
-        except (APIStatusError, APIConnectionError) as e:
-            print(f"ERROR: OpenAI API Status/Connection Error: {e}. An issue occurred with OpenAI's servers or network.")
-            reply_text = "GPT 服務暫時不穩定，請稍後再試。🌐"
-            traceback.print_exc()
-        except Exception as e:
-            print(f"ERROR: ❌ An unexpected error occurred during GPT call: {e}.")
-            traceback.print_exc()
-            reply_text = "目前無法回覆，請稍後再試 🧘"
-        
+        elif judgment_category == '情緒/閒聊/非營養提問':
+            print(f"DEBUG: Stage 2 (Text): Question is emotional/chat. Generating sympathetic response for: '{user_input}'")
+            # 新增的情緒/閒聊回覆邏輯，強調簡潔
+            sympathy_prompt_content = """
+            你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
+            用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
+            保持同理心和鼓勵的語氣。如果語句內容隱含對減重或健康的沮喪，可以給予正向鼓勵。
+            **非常重要：回覆務必極其簡潔（目標在20-40字內完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。避免過度使用表情符號。**
+            """
+            sympathy_response = client.chat.completions.create(
+                model="gpt-4o", # 情感回覆也用4o，語氣會更自然
+                messages=[
+                    {"role": "system", "content": sympathy_prompt_content},
+                    {"role": "user", "content": user_input}
+                ],
+                temperature=0.7, # 稍微降低溫度，讓語氣更自然、內容更聚焦
+                max_tokens=100 # 這類回覆不需要太長
+            )
+            reply_text = sympathy_response.choices[0].message.content.strip()
+            print(f"DEBUG: Generated sympathetic reply text: '{reply_text}'")
+            send_delayed_response(event, reply_text)
+
+        elif judgment_category == '無關':
+            print(f"DEBUG: Stage 2 (Text): Question is NOT nutrition related. Replying with random positive emoji.")
+            # 真正無關的回覆邏輯，維持表情符號
+            positive_emojis = ["😊", "👍", "✨", "🌸", "💡", "💖", "🌟", "🙌", "🙂"]
+            reply_text_emoji = random.choice(positive_emojis)
+            try:
+                if line_bot_api is None:
+                    print("ERROR: line_bot_api is not initialized. Cannot reply with emoji.")
+                    return
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text_emoji))
+                print("DEBUG: Emoji reply sent successfully to LINE.")
+            except Exception as e:
+                print(f"ERROR: Failed to reply with emoji: {e}.")
+                traceback.print_exc()
+        else: # 處理未知的分類結果
+            print(f"WARNING: Unexpected judgment category: '{judgment_category}'. Falling back to generic reply.")
+            reply_text = "抱歉，我還不太明白您的意思，您可以再說清楚一點嗎？"
+            send_delayed_response(event, reply_text)
+
+    except AuthenticationError as e:
+        print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
+        reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
+        traceback.print_exc()
         send_delayed_response(event, reply_text)
-
-    else: # 非營養相關問題，回覆隨機正向 emoji
-        print(f"DEBUG: Stage 2 (Text): Question is NOT nutrition related. Replying with random positive emoji.")
-        positive_emojis = ["😊", "👍", "✨", "🌸", "💡", "💖", "🌟", "🙌", "🙂"]
-        reply_text_emoji = random.choice(positive_emojis)
-        send_delayed_response(event, reply_text_emoji)
-
+    except (APIStatusError, APIConnectionError) as e:
+        print(f"ERROR: OpenAI API Status/Connection Error: {e}. An issue occurred with OpenAI's servers or network.")
+        reply_text = "GPT 服務暫時不穩定，請稍後再試。🌐"
+        traceback.print_exc()
+        send_delayed_response(event, reply_text)
+    except Exception as e:
+        print(f"ERROR: ❌ An unexpected error occurred during GPT call: {e}.")
+        traceback.print_exc()
+        reply_text = "目前無法回覆，請稍後再試 🧘"
+        send_delayed_response(event, reply_text)
 
 # --- 處理圖片訊息 ---
 @handler.add(MessageEvent, message=ImageMessage)
@@ -378,16 +406,13 @@ def handle_image_message(event):
             r.set(f"pending_image:{user_id}", json.dumps(image_info), ex=300) 
             print(f"DEBUG: Pending image saved to Redis for user {user_id}. Expires in 300s.")
             
-            # 解決「丟圖沒回應」問題：簡化 initial_reply_text
-            initial_reply_text = "照片收到，請問想問什麼？" # <<< 這裡修改了回覆文字
+            # 簡化圖片上傳的初步回覆，更自然
+            initial_reply_text = "照片收到囉。請問有什麼想問的嗎？" # 移除表情符號，更簡潔
             send_delayed_response(event, initial_reply_text)
-            return # <<< 確保這裡有 return，避免後續代碼繼續執行
+            return # 確保這裡有 return，避免後續代碼繼續執行
 
         else:
             print(f"WARNING: Redis not initialized. Cannot save pending image for user {user_id}. Image will be processed immediately without pending logic.")
-            # 如果 Redis 沒有初始化，或者連線失敗，則退回到立即處理模式 (無狀態模式)
-            # 這會導致用戶上傳圖片後立即觸發分析，而不是等待
-            # 這段是為了解決如果 Redis 失敗，服務不至於完全失效的備用方案
             
             # ----------------------------------------------------------------
             # GPT-4o 圖片分析邏輯 (無 Redis 狀態時的直接處理)
@@ -399,12 +424,12 @@ def handle_image_message(event):
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "請詳細分析這張食物圖片，盡可能準確地估算其總熱量（卡路里），並列出可能的食物種類和估計份量。如果可以，請提供一些營養師的建議，例如是否有營養缺口，或者可以如何搭配。請用親切口語化的方式回覆。**回覆請務必簡潔，像在 LINE 上聊天一樣，不要過於冗長，將核心資訊傳達清楚即可。**"}, # <<< 在這裡的文字提示中加入簡潔要求
+                            {"type": "text", "text": "請分析這張食物圖片。回覆時，請分兩段提供資訊：\n1. **第一段 (簡潔總結)：** 直接給出這張食物的**總熱量粗估值**，例如：『這份餐點大約XXX卡。』或『這份便當估計是XXX卡。』這段話不要包含任何細節分析，且語氣應中性，避免過於感性。這段話應當簡短有力，不帶任何表情符號。\n2. **第二段 (詳細說明)：** 在第一段之後，換行並列出圖片中食物的種類、估計份量及各自的熱量。在描述份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「「適量」」。\n請用口語化、簡潔自然的語氣回覆，就像在 LINE 上與朋友簡短聊天一樣。**非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**"},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }
                 ],
-                max_tokens=400, # <<< 將這裡從 1000 調整到 400 (或 300-500 之間嘗試)
+                max_tokens=250,
                 temperature=0.7 
             )
             reply_text = vision_response.choices[0].message.content.strip()
