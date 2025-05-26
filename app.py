@@ -15,7 +15,7 @@ import json # 導入 json 庫用於序列化數據
 app = Flask(__name__)
 
 # 環境變數：從 Render 或 .env 自動抓取
-line_channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+line_channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_ACCESS_TOKEN")
 line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 redis_url = os.getenv("REDIS_URL") # 新增 Redis URL 環境變數
@@ -84,7 +84,6 @@ def callback():
     try:
         print("DEBUG: Attempting to handle webhook event with handler...")
         handler.handle(body, signature)
-        print("DEBUG: Webhook event handled successfully by handler.")
     except InvalidSignatureError:
         print("ERROR: InvalidSignatureError - Signature verification failed. Check LINE Channel Secret in Render and LINE Developers.")
         traceback.print_exc()
@@ -96,7 +95,11 @@ def callback():
 
     return "OK"
 
-# --- 共用的回覆邏輯 (延遲和分段) ---
+---
+
+## 共用的回覆邏輯 (延遲和分段)
+
+```python
 def send_delayed_response(event, reply_text):
     messages_to_send = []
     
@@ -124,7 +127,8 @@ def send_delayed_response(event, reply_text):
         current_segment = ""
         for char in reply_text:
             current_segment += char
-            if len(current_segment) >= max_segment_length and char in ['。', '！', '？', '\n', '，', ' ']: # 嘗試在標點符號或空格處分段
+            # 嘗試在標點符號或空格處分段，並檢查長度
+            if len(current_segment) >= max_segment_length and char in ['。', '！', '？', '\n', '，', ' ']:
                 sentences.append(current_segment.strip())
                 current_segment = ""
                 if len(sentences) >= max_messages: # 達到最大訊息數，停止分段
@@ -170,8 +174,11 @@ def send_delayed_response(event, reply_text):
         print(f"ERROR: Failed to reply to LINE user: {e}.")
         traceback.print_exc()
 
+---
 
-# --- 處理文字訊息 ---
+## 處理文字訊息
+
+```python
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id # 獲取用戶 ID
@@ -197,14 +204,14 @@ def handle_text_message(event):
             traceback.print_exc()
             # 如果 Redis 錯誤，當作沒有待處理圖片
             pending_image_data_str = None
-        
+            
     if pending_image_data_str:
         # 用戶發送了文字，且有待處理圖片
         # 判斷用戶是否在詢問圖片相關內容，例如熱量
         print(f"DEBUG: User {user_id} has a pending image. Checking text intent for image.")
         
         # 定義觸發圖片分析的關鍵字
-        image_analysis_keywords = ["熱量", "卡路里", "算", "估", "分析", "看", "這是什麼", "照片", "圖"]
+        image_analysis_keywords = ["熱量", "卡路里", "算", "估", "分析", "看", "這是什麼", "照片", "圖", "營養"]
         
         # 判斷用戶文字是否包含圖片分析意圖
         is_image_analysis_intent = False
@@ -226,9 +233,27 @@ def handle_text_message(event):
                 pending_image_data = json.loads(pending_image_data_str)
                 base64_image = pending_image_data['base64_image']
                 
-                # ----------------------------------------------------------------
-                # GPT-4o 圖片分析邏輯 (從 handle_image_message 函數中複製過來)
-                # ----------------------------------------------------------------
+                # --- MODIFIED SYSTEM PROMPT FOR DETAILED NUTRITION ANALYSIS ---
+                vision_system_prompt = """
+                你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
+                請根據圖片中的食物，提供以下詳細的營養分析：
+
+                1.  **分項營養素與份量估計：**
+                    -   請列出圖片中所有可識別的食物項目。
+                    -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
+                    -   估計每種食物的**份量**，並盡量使用日常生活中容易理解的具體單位（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
+                    -   估計每種食物所提供的**熱量 (卡路里)**。
+
+                2.  **總熱量加總：**
+                    -   計算並提供這份餐點的**總熱量粗估值**。
+
+                3.  **整體回覆格式：**
+                    -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
+                    -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
+                    -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
+                    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
+                """
+                # --- END MODIFIED SYSTEM PROMPT ---
                 print("DEBUG: Calling GPT-4o for image analysis from text handler...")
                 vision_response = client.chat.completions.create(
                     model="gpt-4o",
@@ -236,12 +261,12 @@ def handle_text_message(event):
                         {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": f"請分析這張食物圖片。回覆時，請分兩段提供資訊：\n1. **第一段 (簡潔總結)：** 直接給出這張食物的**總熱量粗估值**，例如：『這份餐點大約XXX卡。』或『這份便當估計是XXX卡。』這段話不要包含任何細節分析，且語氣應中性，避免過於感性。這段話應當簡短有力，不帶任何表情符號。\n2. **第二段 (詳細說明)：** 在第一段之後，換行並列出圖片中食物的種類、估計份量及各自的熱量。在描述份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「「適量」」。\n請用口語化、簡潔自然的語氣回覆，就像在 LINE 上與朋友簡短聊天一樣。**非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**"},
+                                {"type": "text", "text": vision_system_prompt},
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                             ]
                         }
                     ],
-                    max_tokens=250,
+                    max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
                     temperature=0.7 
                 )
                 reply_text = vision_response.choices[0].message.content.strip()
@@ -351,7 +376,6 @@ def handle_text_message(event):
                     print("ERROR: line_bot_api is not initialized. Cannot reply with emoji.")
                     return
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text_emoji))
-                print("DEBUG: Emoji reply sent successfully to LINE.")
             except Exception as e:
                 print(f"ERROR: Failed to reply with emoji: {e}.")
                 traceback.print_exc()
@@ -376,7 +400,11 @@ def handle_text_message(event):
         reply_text = "目前無法回覆，請稍後再試 🧘"
         send_delayed_response(event, reply_text)
 
-# --- 處理圖片訊息 ---
+---
+
+## 處理圖片訊息
+
+```python
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     user_id = event.source.user_id # 獲取用戶 ID
@@ -418,18 +446,39 @@ def handle_image_message(event):
             # GPT-4o 圖片分析邏輯 (無 Redis 狀態時的直接處理)
             # ----------------------------------------------------------------
             print("DEBUG: Calling GPT-4o for direct image analysis (Redis not available).")
+            # --- MODIFIED SYSTEM PROMPT FOR DETAILED NUTRITION ANALYSIS ---
+            vision_system_prompt = """
+            你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
+            請根據圖片中的食物，提供以下詳細的營養分析：
+
+            1.  **分項營養素與份量估計：**
+                -   請列出圖片中所有可識別的食物項目。
+                -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
+                -   估計每種食物的**份量**，並盡量使用日常生活中容易理解的具體單位（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
+                -   估計每種食物所提供的**熱量 (卡路里)**。
+
+            2.  **總熱量加總：**
+                -   計算並提供這份餐點的**總熱量粗估值**。
+
+            3.  **整體回覆格式：**
+                -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
+                -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
+                -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
+                -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
+            """
+            # --- END MODIFIED SYSTEM PROMPT ---
             vision_response = client.chat.completions.create(
                 model="gpt-4o", 
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "請分析這張食物圖片。回覆時，請分兩段提供資訊：\n1. **第一段 (簡潔總結)：** 直接給出這張食物的**總熱量粗估值**，例如：『這份餐點大約XXX卡。』或『這份便當估計是XXX卡。』這段話不要包含任何細節分析，且語氣應中性，避免過於感性。這段話應當簡短有力，不帶任何表情符號。\n2. **第二段 (詳細說明)：** 在第一段之後，換行並列出圖片中食物的種類、估計份量及各自的熱量。在描述份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「「適量」」。\n請用口語化、簡潔自然的語氣回覆，就像在 LINE 上與朋友簡短聊天一樣。**非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**"},
+                            {"type": "text", "text": vision_system_prompt},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }
                 ],
-                max_tokens=250,
+                max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
                 temperature=0.7 
             )
             reply_text = vision_response.choices[0].message.content.strip()
