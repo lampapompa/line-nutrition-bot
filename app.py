@@ -95,11 +95,8 @@ def callback():
 
     return "OK"
 
----
 
-## 共用的回覆邏輯 (延遲和分段)
 
-```python
 def send_delayed_response(event, reply_text):
     messages_to_send = []
     
