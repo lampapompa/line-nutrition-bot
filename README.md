@@ -87,8 +87,8 @@
 
 ### 4. 食物熱量分析師 (圖片分析的 user 角色內容，通常為動態構建)
 
-# 此內容在 handle_text_message 和 handle_image_message 中被直接構建
-# 作為 GPT-4o Vision API 呼叫時 `messages` 列表中 `content` 的一部分
+### 此內容在 handle_text_message 和 handle_image_message 中被直接構建
+### 作為 GPT-4o Vision API 呼叫時 `messages` 列表中 `content` 的一部分
 
 """請分析這張食物圖片。回覆時，請分兩段提供資訊：
 1. **第一段 (簡潔總結)：** 直接給出這張食物的**總熱量粗估值**，例如：『這份餐點大約XXX卡。』或『這份便當估計是XXX卡。』這段話不要包含任何細節分析，且語氣應中性，避免過於感性。這段話應當簡短有力，不帶任何表情符號。
