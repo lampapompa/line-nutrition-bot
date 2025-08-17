@@ -260,7 +260,7 @@ def handle_text_message(event):
         else: # 有待處理圖片，但用戶文字與圖片分析無關
             print(f"DEBUG: User {user_id} has pending image, but text is not about image analysis. Replying with reminder.")
             # 調整語氣，更自然、不那麼「巴結」
-            reply_text = "嗯？這條訊息好像不是在問照片的問題耶！如果你想問照片，記得告訴我喔。不然我可以回答其他關於營養或健康的問題啦！"
+            reply_text = "😎"
             send_delayed_response(event, reply_text)
             return # 處理完提醒後就返回
 
