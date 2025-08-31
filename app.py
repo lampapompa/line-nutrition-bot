@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, abort
+from flask import Flask, request, abort, render_template
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
@@ -95,6 +95,14 @@ def callback():
         abort(500)
 
     return "OK"
+
+# --- [新功能] LIFF 頁面專用路由 ---
+# 當有人訪問 https://.../liff 這個網址時，這個函式會被觸發
+@app.route("/liff")
+def liff_page():
+    # 它會去 templates 資料夾中，找出 liff.html 這個檔案並回傳
+    # 這是讓我們的 LIFF 頁面能被看見的關鍵
+    return render_template('liff.html')
 
 # --- 共用的回覆邏輯 (延遲和分段) ---
 def send_delayed_response(event, reply_text):
@@ -260,7 +268,7 @@ def handle_text_message(event):
         else: # 有待處理圖片，但用戶文字與圖片分析無關
             print(f"DEBUG: User {user_id} has pending image, but text is not about image analysis. Replying with reminder.")
             # 調整語氣，更自然、不那麼「巴結」
-            reply_text = "😎"
+            reply_text = "👍"
             send_delayed_response(event, reply_text)
             return # 處理完提醒後就返回
 
@@ -461,8 +469,9 @@ def handle_image_message(event):
         reply_text = "處理圖片時遇到問題，請稍後再試 🧘"
         send_delayed_response(event, reply_text)
     
-# 正確的 Render 啟動方式：讀取 port 並綁定 0.0.0.0
+# --- 程式的進入點 ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"DEBUG: Starting Flask app on host 0.0.0.0, port {port}")
     app.run(host="0.0.0.0", port=port)
+
