@@ -2,3 +2,4 @@ flask
 line-bot-sdk
 openai
 redis
+psycopg2-binary
