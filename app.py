@@ -336,7 +336,7 @@ def handle_text_message(event):
         elif judgment_category == '無關':
             print(f"DEBUG: Stage 2 (Text): Question is NOT nutrition related. Replying with random positive emoji.")
             # 真正無關的回覆邏輯，維持表情符號
-            positive_emojis = ["😎"]
+            positive_emojis = ["⭕️"]
             reply_text_emoji = random.choice(positive_emojis)
             try:
                 if line_bot_api is None:
