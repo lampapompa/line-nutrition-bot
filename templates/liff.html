@@ -25,7 +25,6 @@
 </head>
 <body class="bg-gray-50 text-gray-800">
 
-    <!-- 載入中畫面 -->
     <div id="loading" class="flex justify-center items-center h-screen">
         <div class="text-center">
             <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -36,10 +35,8 @@
         </div>
     </div>
 
-    <!-- 主要應用程式介面 (預設隱藏) -->
     <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
         
-        <!-- Tab 分頁按鈕 -->
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
             <nav class="flex -mb-px space-x-6" aria-label="Tabs">
                 <button onclick="switchTab('profile')" class="tab-button active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
@@ -54,22 +51,22 @@
             </nav>
         </div>
 
-        <!-- 管理員模式面板 (預設隱藏) -->
         <div id="admin-panel" class="hidden bg-yellow-100 p-3 rounded-lg">
             <label for="user-selector" class="block text-sm font-medium text-yellow-800">管理員模式：正在檢視</label>
             <select id="user-selector" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
-                <!-- 選項將由 JavaScript 動態填入 -->
-            </select>
+                </select>
         </div>
 
-        <!-- 內容區域 -->
         <div id="tab-content">
-            <!-- [分頁一] 個人檔案 -->
             <div id="profile-tab" class="space-y-4">
                 <h2 class="text-xl font-bold">個人檔案與目標</h2>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">身高 (cm)</label>
                     <input type="number" id="height" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">體重 (kg)</label>
+                    <input type="number" id="profile-weight" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">年齡</label>
@@ -92,7 +89,6 @@
                 </div>
             </div>
 
-            <!-- [分頁二] 每日記錄 -->
             <div id="log-tab" class="hidden space-y-4">
                 <div class="bg-blue-50 p-4 rounded-lg text-center">
                     <p class="text-sm text-gray-600">今日已攝取 / 目標熱量</p>
@@ -131,7 +127,6 @@
                 </div>
             </div>
 
-            <!-- [分頁三] 進度追蹤 -->
             <div id="trends-tab" class="hidden space-y-4">
                  <h2 class="text-xl font-bold">進度追蹤</h2>
                  <div class="bg-white p-4 rounded-lg shadow">
@@ -150,7 +145,6 @@
         </button>
     </div>
 
-    <!-- 這是 LINE LIFF SDK，讓我們的網頁能跟 LINE 溝通 -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         // --- Tab切換功能 ---
@@ -166,6 +160,39 @@
             button.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
         }
 
+        // --- ===== 修改 START: BMR 即時計算功能 ===== ---
+        /**
+         * 根據輸入的數值，即時計算並顯示 BMR 結果
+         */
+        function calculateAndDisplayBMR() {
+            // 1. 取得各個輸入欄位的值
+            const height = parseFloat(document.getElementById('height').value);
+            const weight = parseFloat(document.getElementById('profile-weight').value);
+            const age = parseFloat(document.getElementById('age').value);
+            const gender = document.getElementById('gender').value;
+            const bmrDisplay = document.getElementById('bmr-display');
+
+            // 2. 檢查所有欄位是否都有有效數值 (大於0)
+            if (height > 0 && weight > 0 && age > 0) {
+                let bmr = 0;
+                // 3. 使用 Mifflin-St Jeor 公式計算 BMR
+                if (gender === 'male') {
+                    // 男性: 10 * 體重(kg) + 6.25 * 身高(cm) - 5 * 年齡 + 5
+                    bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5;
+                } else { // female
+                    // 女性: 10 * 體重(kg) + 6.25 * 身高(cm) - 5 * 年齡 - 161
+                    bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161;
+                }
+                // 4. 將計算結果 (四捨五入到整數) 更新到畫面上
+                bmrDisplay.textContent = `${Math.round(bmr)} kcal`;
+            } else {
+                // 如果有任何欄位是空的或無效，就顯示預設文字
+                bmrDisplay.textContent = '--- kcal';
+            }
+        }
+        // --- ===== 修改 END ===== ---
+
+
         // --- 主程式 ---
         async function main() {
             // LIFF 初始化，這是與 LINE 溝通的起點
@@ -176,6 +203,25 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('app').classList.remove('hidden');
 
+            // --- ===== 修改 START: 綁定事件監聽 ===== ---
+            // 1. 找到所有需要監聽的輸入欄位
+            const heightInput = document.getElementById('height');
+            const weightInput = document.getElementById('profile-weight');
+            const ageInput = document.getElementById('age');
+            const genderSelect = document.getElementById('gender');
+
+            // 2. 建立一個包含這些欄位的陣列，方便統一處理
+            const inputsToWatch = [heightInput, weightInput, ageInput, genderSelect];
+
+            // 3. 為陣列中的每一個欄位加上事件監聽器
+            inputsToWatch.forEach(element => {
+                // 如果是下拉選單(select)，就用 'change' 事件；如果是輸入框，就用 'input' 事件
+                const eventType = (element.tagName.toLowerCase() === 'select') ? 'change' : 'input';
+                element.addEventListener(eventType, calculateAndDisplayBMR);
+            });
+            // --- ===== 修改 END ===== ---
+
+
             // 之後，我們會在這裡加入讀取和儲存資料的核心邏輯
         }
 
@@ -184,4 +230,3 @@
     </script>
 </body>
 </html>
-
