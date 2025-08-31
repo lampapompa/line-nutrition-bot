@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 營養教練 - 每日記錄</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        .tab-button.active { 
+            border-bottom-color: #10B981; 
+            color: #059669; 
+            font-weight: 700;
+        }
+        /* 針對 iOS 輸入框美化 */
+        input[type="number"], input[type="text"], select, textarea {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- 載入中畫面 -->
+    <div id="loading" class="flex justify-center items-center h-screen">
+        <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-500 mt-2">正在載入資料...</p>
+        </div>
+    </div>
+
+    <!-- 主要應用程式介面 (預設隱藏) -->
+    <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
+        
+        <!-- Tab 分頁按鈕 -->
+        <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
+            <nav class="flex -mb-px space-x-6" aria-label="Tabs">
+                <button onclick="switchTab('profile')" class="tab-button active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                    個人檔案
+                </button>
+                <button onclick="switchTab('log')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    每日記錄
+                </button>
+                <button onclick="switchTab('trends')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    進度追蹤
+                </button>
+            </nav>
+        </div>
+
+        <!-- 管理員模式面板 (預設隱藏) -->
+        <div id="admin-panel" class="hidden bg-yellow-100 p-3 rounded-lg">
+            <label for="user-selector" class="block text-sm font-medium text-yellow-800">管理員模式：正在檢視</label>
+            <select id="user-selector" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                <!-- 選項將由 JavaScript 動態填入 -->
+            </select>
+        </div>
+
+        <!-- 內容區域 -->
+        <div id="tab-content">
+            <!-- [分頁一] 個人檔案 -->
+            <div id="profile-tab" class="space-y-4">
+                <h2 class="text-xl font-bold">個人檔案與目標</h2>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">身高 (cm)</label>
+                    <input type="number" id="height" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">年齡</label>
+                    <input type="number" id="age" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">性別</label>
+                    <select id="gender" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="male">男性</option>
+                        <option value="female">女性</option>
+                    </select>
+                </div>
+                <div class="bg-emerald-50 p-3 rounded-lg">
+                    <p class="text-sm text-gray-600">基礎代謝率 (BMR)</p>
+                    <p id="bmr-display" class="text-2xl font-bold text-emerald-600">--- kcal</p>
+                </div>
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700">每日目標攝取熱量 (kcal)</label>
+                    <input type="number" id="target-calories" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+            </div>
+
+            <!-- [分頁二] 每日記錄 -->
+            <div id="log-tab" class="hidden space-y-4">
+                <div class="bg-blue-50 p-4 rounded-lg text-center">
+                    <p class="text-sm text-gray-600">今日已攝取 / 目標熱量</p>
+                    <p class="text-2xl font-bold text-blue-600"><span id="today-calories">0</span> / <span id="log-target-calories">1500</span> kcal</p>
+                    <p id="calorie-status" class="text-sm font-medium text-green-600">剩餘額度充足！</p>
+                </div>
+                <h2 class="text-xl font-bold">飲食與生活記錄</h2>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">早餐</label>
+                    <textarea id="breakfast" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：鮪魚蛋餅、無糖豆漿"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">午餐</label>
+                    <textarea id="lunch" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：雞腿便當（飯吃一半）"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">晚餐</label>
+                    <textarea id="dinner" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：鮭魚、燙青菜、豆腐湯"></textarea>
+                </div>
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700">點心 / 其他</label>
+                    <textarea id="snacks" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500"></textarea>
+                </div>
+                <h2 class="text-xl font-bold">身體數據</h2>
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
+                    <input type="number" id="water" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700">今日運動</label>
+                    <input type="text" id="exercise" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：跑步 30 分鐘">
+                </div>
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label>
+                    <input type="number" id="weight" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                </div>
+            </div>
+
+            <!-- [分頁三] 進度追蹤 -->
+            <div id="trends-tab" class="hidden space-y-4">
+                 <h2 class="text-xl font-bold">進度追蹤</h2>
+                 <div class="bg-white p-4 rounded-lg shadow">
+                    <p class="font-medium">一週熱量趨勢</p>
+                    <div class="h-48 flex justify-center items-center text-gray-400">圖表功能開發中...</div>
+                 </div>
+                 <div class="bg-white p-4 rounded-lg shadow">
+                    <p class="font-medium">一週體重趨勢</p>
+                    <div class="h-48 flex justify-center items-center text-gray-400">圖表功能開發中...</div>
+                 </div>
+            </div>
+        </div>
+
+        <button id="save-button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors">
+            儲存今日紀錄
+        </button>
+    </div>
+
+    <!-- 這是 LINE LIFF SDK，讓我們的網頁能跟 LINE 溝通 -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script>
+        // --- Tab切換功能 ---
+        function switchTab(tabName) {
+            ['profile', 'log', 'trends'].forEach(tabId => {
+                document.getElementById(tabId + '-tab').classList.add('hidden');
+                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.remove('active');
+                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+            });
+            document.getElementById(tabName + '-tab').classList.remove('hidden');
+            const button = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
+            button.classList.add('active');
+            button.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+        }
+
+        // --- 主程式 ---
+        async function main() {
+            // LIFF 初始化，這是與 LINE 溝通的起點
+            // 我們稍後會在這裡填上從 LINE 開發者後台取得的 LIFF ID
+            // await liff.init({ liffId: "YOUR_LIFF_ID_HERE" }); 
+
+            // 顯示主畫面，隱藏載入畫面
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+
+            // 之後，我們會在這裡加入讀取和儲存資料的核心邏輯
+        }
+
+        // 執行主程式
+        main();
+    </script>
+</body>
+</html>
+
