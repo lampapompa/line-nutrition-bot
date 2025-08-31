@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, abort, render_template
+from flask import Flask, request, abort, render_template, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
@@ -11,6 +11,9 @@ import base64
 import requests
 import redis # 導入 redis 庫
 import json # 導入 json 庫用於序列化數據
+from datetime import datetime
+import psycopg2
+import urllib.parse as urlparse
 
 app = Flask(__name__)
 
@@ -19,12 +22,14 @@ line_channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 redis_url = os.getenv("REDIS_URL") # 新增 Redis URL 環境變數
+database_url = os.getenv("DATABASE_URL") # 新增 DATABASE_URL
 
 # DEBUG: 檢查環境變數是否正確讀取
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN loaded: {'Yes' if line_channel_access_token else 'No'}")
 print(f"DEBUG: LINE_CHANNEL_SECRET loaded: {'Yes' if line_channel_secret else 'No'}")
 print(f"DEBUG: OPENAI_API_KEY loaded: {'Yes' if openai_api_key else 'No'}")
 print(f"DEBUG: REDIS_URL loaded: {'Yes' if redis_url else 'No'}")
+print(f"DEBUG: DATABASE_URL loaded: {'Yes' if database_url else 'No'}")
 
 # 初始化 LineBotApi 和 WebhookHandler
 if line_channel_access_token and line_channel_secret:
@@ -61,6 +66,67 @@ if redis_url:
         traceback.print_exc()
 else:
     print("WARNING: REDIS_URL is not set. Session management will not be persistent.")
+
+# --- [新功能] PostgreSQL 資料庫連線 ---
+def get_db_connection():
+    if not database_url:
+        raise ValueError("DATABASE_URL environment variable is not set")
+    url = urlparse.urlparse(database_url)
+    conn = psycopg2.connect(
+        dbname=url.path[1:],
+        user=url.username,
+        password=url.password,
+        host=url.hostname,
+        port=url.port
+    )
+    return conn
+
+# --- [新功能] 建立資料表的函式 (只需要執行一次) ---
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id VARCHAR(255) PRIMARY KEY,
+            height REAL,
+            age INTEGER,
+            gender VARCHAR(10),
+            target_calories INTEGER
+        );
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS daily_logs (
+            user_id VARCHAR(255),
+            log_date DATE,
+            weight REAL,
+            water INTEGER,
+            exercise TEXT,
+            breakfast TEXT,
+            breakfast_cal INTEGER,
+            lunch TEXT,
+            lunch_cal INTEGER,
+            dinner TEXT,
+            dinner_cal INTEGER,
+            snacks TEXT,
+            snacks_cal INTEGER,
+            PRIMARY KEY (user_id, log_date)
+        );
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Database tables initialized.")
+
+# --- [新功能] 觸發建立資料表的臨時路由 ---
+@app.route("/init-db")
+def init_database_route():
+    try:
+        init_db()
+        return "Database tables initialized successfully!"
+    except Exception as e:
+        print(f"ERROR in /init-db: {e}")
+        traceback.print_exc()
+        return f"An error occurred during database initialization: {e}", 500
 
 # 健康檢查用
 @app.route("/", methods=['GET'])
@@ -208,8 +274,7 @@ def handle_text_message(event):
                 pending_image_data = json.loads(pending_image_data_str)
                 base64_image = pending_image_data['base64_image']
                 
-                # --- START MODIFICATION FOR TEXT HANDLER'S VISION PROMPT ---
-                print("DEBUG: Calling GPT-4o for image analysis from text handler...")
+                # --- START: 您原始的 Vision Prompt ---
                 vision_system_prompt_for_text_handler = """
                 你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
                 請根據圖片中的食物，提供以下詳細的營養分析：
@@ -229,21 +294,20 @@ def handle_text_message(event):
                     -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
                     -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
                 """
+                # --- END: 您原始的 Vision Prompt ---
+                
                 vision_response = client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": vision_system_prompt_for_text_handler},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                            ]
-                        }
-                    ],
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": vision_system_prompt_for_text_handler},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }],
                     max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
                     temperature=0.7 
                 )
-                # --- END MODIFICATION FOR TEXT HANDLER'S VISION PROMPT ---
                 reply_text = vision_response.choices[0].message.content.strip()
                 send_delayed_response(event, reply_text)
 
@@ -413,8 +477,7 @@ def handle_image_message(event):
         else:
             print(f"WARNING: Redis not initialized. Cannot save pending image for user {user_id}. Image will be processed immediately without pending logic.")
             
-            # --- START MODIFICATION FOR IMAGE HANDLER'S VISION PROMPT ---
-            print("DEBUG: Calling GPT-4o for direct image analysis (Redis not available).")
+            # --- START: 您原始的直接圖片分析 Prompt ---
             vision_system_prompt_for_image_handler = """
             你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
             請根據圖片中的食物，提供以下詳細的營養分析：
@@ -434,21 +497,20 @@ def handle_image_message(event):
                 -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
                 -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
             """
+            # --- END: 您原始的直接圖片分析 Prompt ---
+            
             vision_response = client.chat.completions.create(
                 model="gpt-4o", 
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": vision_system_prompt_for_image_handler},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
-                    }
-                ],
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": vision_system_prompt_for_image_handler},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }],
                 max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
                 temperature=0.7 
             )
-            # --- END MODIFICATION FOR IMAGE HANDLER'S VISION PROMPT ---
             reply_text = vision_response.choices[0].message.content.strip()
             send_delayed_response(event, reply_text)
             return # 處理完畢直接返回，因為沒有等待邏輯
@@ -469,6 +531,100 @@ def handle_image_message(event):
         reply_text = "處理圖片時遇到問題，請稍後再試 🧘"
         send_delayed_response(event, reply_text)
     
+# --- [新功能] LIFF API (PostgreSQL 版本) ---
+@app.route("/api/save_log", methods=['POST'])
+def save_log():
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        if not user_id:
+            return jsonify({"status": "error", "message": "User ID is missing"}), 400
+
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute('''
+            INSERT INTO user_profiles (user_id, height, age, gender, target_calories)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                height = EXCLUDED.height,
+                age = EXCLUDED.age,
+                gender = EXCLUDED.gender,
+                target_calories = EXCLUDED.target_calories;
+        ''', (
+            user_id, data.get('height'), data.get('age'), data.get('gender'), data.get('targetCalories')
+        ))
+
+        cur.execute('''
+            INSERT INTO daily_logs (user_id, log_date, weight, water, exercise, breakfast, breakfast_cal, lunch, lunch_cal, dinner, dinner_cal, snacks, snacks_cal)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, log_date) DO UPDATE SET
+                weight = EXCLUDED.weight, water = EXCLUDED.water, exercise = EXCLUDED.exercise,
+                breakfast = EXCLUDED.breakfast, breakfast_cal = EXCLUDED.breakfast_cal,
+                lunch = EXCLUDED.lunch, lunch_cal = EXCLUDED.lunch_cal,
+                dinner = EXCLUDED.dinner, dinner_cal = EXCLUDED.dinner_cal,
+                snacks = EXCLUDED.snacks, snacks_cal = EXCLUDED.snacks_cal;
+        ''', (
+            user_id, today_str, data.get('weight'), data.get('water'), data.get('exercise'),
+            data.get('breakfast'), data.get('breakfastCal'), data.get('lunch'), data.get('lunchCal'),
+            data.get('dinner'), data.get('dinnerCal'), data.get('snacks'), data.get('snacksCal')
+        ))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        print(f"ERROR in save_log: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/load_log", methods=['GET'])
+def load_log():
+    try:
+        user_id = request.args.get('userId')
+        if not user_id:
+            return jsonify({"status": "error", "message": "User ID is missing"}), 400
+
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        conn = get_db_connection()
+        cur = conn.cursor()
+        response_data = {}
+
+        cur.execute("SELECT height, age, gender, target_calories FROM user_profiles WHERE user_id = %s", (user_id,))
+        profile = cur.fetchone()
+        if profile:
+            response_data['height'] = profile[0]
+            response_data['age'] = profile[1]
+            response_data['gender'] = profile[2]
+            response_data['targetCalories'] = profile[3]
+
+        cur.execute("SELECT weight, water, exercise, breakfast, breakfast_cal, lunch, lunch_cal, dinner, dinner_cal, snacks, snacks_cal FROM daily_logs WHERE user_id = %s AND log_date = %s", (user_id, today_str))
+        log = cur.fetchone()
+        if log:
+            response_data['weight'] = log[0]
+            response_data['water'] = log[1]
+            response_data['exercise'] = log[2]
+            response_data['breakfast'] = log[3]
+            response_data['breakfastCal'] = log[4]
+            response_data['lunch'] = log[5]
+            response_data['lunchCal'] = log[6]
+            response_data['dinner'] = log[7]
+            response_data['dinnerCal'] = log[8]
+            response_data['snacks'] = log[9]
+            response_data['snacksCal'] = log[10]
+
+        cur.close()
+        conn.close()
+        return jsonify({"status": "success", "data": response_data})
+
+    except Exception as e:
+        print(f"ERROR in load_log: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+        
 # --- 程式的進入點 ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
