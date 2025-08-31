@@ -36,7 +36,7 @@ if line_channel_access_token and line_channel_secret:
     line_bot_api = LineBotApi(line_channel_access_token)
     handler = WebhookHandler(line_channel_secret)
 else:
-    print("ERROR: LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is missing.")
+    print("ERROR: LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is missing. Please set environment variables.")
     line_bot_api = None
     handler = None
 
@@ -51,7 +51,7 @@ if openai_api_key:
         traceback.print_exc()
         client = None
 else:
-    print("ERROR: OPENAI_API_KEY is missing.")
+    print("ERROR: OPENAI_API_KEY is missing. OpenAI related features will be disabled.")
     
 # --- 初始化 Redis 客戶端 (用於圖片快取) ---
 r = None
@@ -59,12 +59,12 @@ if redis_url:
     try:
         r = redis.from_url(redis_url, decode_responses=True)
         r.ping()
-        print("DEBUG: Redis client connected successfully.")
+        print("DEBUG: Redis client initialized and connected successfully.")
     except Exception as e:
-        print(f"ERROR: Failed to connect to Redis client: {e}")
+        print(f"ERROR: Failed to initialize or connect to Redis client: {e}")
         traceback.print_exc()
 else:
-    print("WARNING: REDIS_URL is not set. Image caching will be disabled.")
+    print("WARNING: REDIS_URL is not set. Session management will not be persistent.")
 
 # --- [新功能] PostgreSQL 資料庫連線 ---
 def get_db_connection():
@@ -84,7 +84,6 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    # 建立一個儲存使用者個人檔案的 table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS user_profiles (
             user_id VARCHAR(255) PRIMARY KEY,
@@ -94,7 +93,6 @@ def init_db():
             target_calories INTEGER
         );
     ''')
-    # 建立一個儲存每日記錄的 table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS daily_logs (
             user_id VARCHAR(255),
@@ -129,7 +127,6 @@ def init_database_route():
         traceback.print_exc()
         return f"An error occurred during database initialization: {e}", 500
 
-
 # --- 健康檢查用 ---
 @app.route("/", methods=['GET'])
 def home():
@@ -142,10 +139,13 @@ def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
     if handler is None:
+        print("ERROR: LINE Bot Handler not initialized. Aborting 500.")
         abort(500)
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        print("ERROR: InvalidSignatureError - Signature verification failed.")
+        traceback.print_exc()
         abort(400)
     except Exception as e:
         print(f"CRITICAL ERROR: An unexpected error occurred during handler.handle: {e}")
@@ -174,7 +174,7 @@ def send_delayed_response(event, reply_text):
         delay_seconds = random.uniform(7, 9) + ((reply_length - 100) / 50) * random.uniform(1, 2)
         delay_seconds = min(delay_seconds, 30)
 
-    print(f"DEBUG: Calculated reply delay: {delay_seconds:.2f} seconds.")
+    print(f"DEBUG: Calculated initial reply delay: {delay_seconds:.2f} seconds for {reply_length} characters.")
     time.sleep(delay_seconds)
 
     messages_to_send.append(TextSendMessage(text=reply_text.strip()))
@@ -203,7 +203,7 @@ def handle_text_message(event):
     reply_text = "目前無法回覆，請稍後再試 🧘" 
 
     if not client:
-        print("ERROR: OpenAI client is not initialized.")
+        print("ERROR: OpenAI client is not initialized. Cannot call GPT.")
         send_delayed_response(event, reply_text)
         return
 
@@ -212,7 +212,9 @@ def handle_text_message(event):
         try:
             pending_image_data_str = r.get(f"pending_image:{user_id}")
         except Exception as redis_e:
-            print(f"ERROR: Failed to get from Redis for user {user_id}: {redis_e}")
+            print(f"ERROR: Failed to get pending image from Redis for user {user_id}: {redis_e}")
+            traceback.print_exc()
+            pending_image_data_str = None
             
     if pending_image_data_str:
         image_analysis_keywords = ["熱量", "卡路里", "算", "估", "分析", "看", "這是什麼", "照片", "圖"]
@@ -223,32 +225,41 @@ def handle_text_message(event):
                 try:
                     r.delete(f"pending_image:{user_id}")
                 except Exception as redis_e:
-                    print(f"ERROR: Failed to delete from Redis for user {user_id}: {redis_e}")
+                    print(f"ERROR: Failed to delete pending image from Redis for user {user_id}: {redis_e}")
+                    traceback.print_exc()
+
             try:
                 pending_image_data = json.loads(pending_image_data_str)
                 base64_image = pending_image_data['base64_image']
                 
-                vision_system_prompt = """
+                # --- START: 您原始的 Vision Prompt ---
+                vision_system_prompt_for_text_handler = """
                 你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
                 請根據圖片中的食物，提供以下詳細的營養分析：
+
                 1.  **分項營養素與份量估計：**
                     -   請列出圖片中所有可識別的食物項目。
-                    -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」。
-                    -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小）。
+                    -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
+                    -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
                     -   估計每種食物所提供的**熱量 (卡路里)**。
+
                 2.  **總熱量加總：**
                     -   計算並提供這份餐點的**總熱量粗估值**。
+
                 3.  **整體回覆格式：**
-                    -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**。
-                    -   **第二段 (詳細說明)：** 在第一段之後，換行列出詳細分析。
-                    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語。**
+                    -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
+                    -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
+                    -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
+                    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
                 """
+                # --- END: 您原始的 Vision Prompt ---
+                
                 vision_response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": vision_system_prompt},
+                            {"type": "text", "text": vision_system_prompt_for_text_handler},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }],
@@ -269,28 +280,36 @@ def handle_text_message(event):
             return
 
     try:
+        # --- START: 您原始的文字分類 Prompt ---
         judgment_response = client.chat.completions.create(
             model="gpt-3.5-turbo", 
             messages=[
                 {"role": "system", "content": """你是一個訊息分類器。請判斷用戶的訊息屬於以下哪一種類型：
-                - 『營養/健康相關』
-                - 『情緒/閒聊/非營養提問』
-                - 『無關』
+                - 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。
+                - 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是與營養健康主題無關但仍想與人聊天的內容。
+                - 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
+
                 只回覆分類名稱，不要有其他文字。
                 """},
                 {"role": "user", "content": user_input}
             ],
             temperature=0
         )
+        # --- END: 您原始的文字分類 Prompt ---
+        
         judgment_category = judgment_response.choices[0].message.content.strip()
 
         if judgment_category == '營養/健康相關':
+            # --- START: 您原始的營養相關 Prompt ---
             system_prompt_content = """
             你是一位友善、專業的營養師助理。
             請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
-            **非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語。**
-            在描述食物份量時，請盡量使用容易理解的日常比喻。
+            **非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等，直接提供資訊即可。除非必要，否則不需要過度使用表情符號。**
+            在回答時，提供專業的營養知識，避免生硬的專業術語。
+            **在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「適量」。**
             """
+            # --- END: 您原始的營養相關 Prompt ---
+            
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -303,11 +322,15 @@ def handle_text_message(event):
             reply_text = response.choices[0].message.content.strip()
             send_delayed_response(event, reply_text)
         elif judgment_category == '情緒/閒聊/非營養提問':
+            # --- START: 您原始的閒聊相關 Prompt ---
             sympathy_prompt_content = """
             你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
-            用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵。
-            **非常重要：回覆務必極其簡潔（目標在20-40字內完成），請勿使用任何開場白、問候語或結尾語。**
+            用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
+            保持同理心和鼓勵的語氣。如果語句內容隱含對減重或健康的沮喪，可以給予正向鼓勵。
+            **非常重要：回覆務必極其簡潔（目標在20-40字內完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。避免過度使用表情符號。**
             """
+            # --- END: 您原始的閒聊相關 Prompt ---
+            
             sympathy_response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -320,10 +343,15 @@ def handle_text_message(event):
             reply_text = sympathy_response.choices[0].message.content.strip()
             send_delayed_response(event, reply_text)
         elif judgment_category == '無關':
-            positive_emojis = ["😊"]
+            positive_emojis = ["😊", "👍", "✨", "🌸", "💡", "💖", "🌟", "🙌", "🙂"]
             reply_text_emoji = random.choice(positive_emojis)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text_emoji))
+            try:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text_emoji))
+            except Exception as e:
+                print(f"ERROR: Failed to reply with emoji: {e}.")
+                traceback.print_exc()
         else:
+            print(f"WARNING: Unexpected judgment category: '{judgment_category}'.")
             reply_text = "抱歉，我還不太明白您的意思，您可以再說清楚一點嗎？"
             send_delayed_response(event, reply_text)
     except Exception as e:
@@ -340,7 +368,7 @@ def handle_image_message(event):
     reply_text = "抱歉，圖片處理服務目前無法使用，請稍後再試。😅"
 
     if not client:
-        print("ERROR: OpenAI client is not initialized.")
+        print("ERROR: OpenAI client is not initialized. Cannot process image.")
         send_delayed_response(event, reply_text)
         return
 
@@ -354,19 +382,37 @@ def handle_image_message(event):
             r.set(f"pending_image:{user_id}", json.dumps(image_info), ex=300) 
             initial_reply_text = "照片收到囉。請問有什麼想問的嗎？"
             send_delayed_response(event, initial_reply_text)
+            return
         else:
-            print("WARNING: Redis not initialized. Processing image directly.")
-            vision_system_prompt = """
+            print("WARNING: Redis not initialized. Cannot save pending image.")
+            # --- START: 您原始的直接圖片分析 Prompt ---
+            vision_system_prompt_for_image_handler = """
             你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
-            請根據圖片中的食物，提供詳細的營養分析，包含六大類食物分類、份量估計、總熱量。
-            **非常重要：回覆請勿使用任何開場白、問候語或結尾語。**
+            請根據圖片中的食物，提供以下詳細的營養分析：
+
+            1.  **分項營養素與份量估計：**
+                -   請列出圖片中所有可識別的食物項目。
+                -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
+                -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
+                -   估計每種食物所提供的**熱量 (卡路里)**。
+
+            2.  **總熱量加總：**
+                -   計算並提供這份餐點的**總熱量粗估值**。
+
+            3.  **整體回覆格式：**
+                -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
+                -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
+                -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
+                -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
             """
+            # --- END: 您原始的直接圖片分析 Prompt ---
+            
             vision_response = client.chat.completions.create(
                 model="gpt-4o", 
                 messages=[{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": vision_system_prompt},
+                        {"type": "text", "text": vision_system_prompt_for_image_handler},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                     ]
                 }],
@@ -375,6 +421,7 @@ def handle_image_message(event):
             )
             reply_text = vision_response.choices[0].message.content.strip()
             send_delayed_response(event, reply_text)
+            return
     except Exception as e:
         print(f"ERROR: ❌ An unexpected error occurred during image processing: {e}.")
         traceback.print_exc()
@@ -394,7 +441,6 @@ def save_log():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # 使用 UPSERT 語法：如果 user_id 已存在就更新，不存在就新增
         cur.execute('''
             INSERT INTO user_profiles (user_id, height, age, gender, target_calories)
             VALUES (%s, %s, %s, %s, %s)
@@ -444,7 +490,6 @@ def load_log():
         cur = conn.cursor()
         response_data = {}
 
-        # 讀取個人檔案
         cur.execute("SELECT height, age, gender, target_calories FROM user_profiles WHERE user_id = %s", (user_id,))
         profile = cur.fetchone()
         if profile:
@@ -453,7 +498,6 @@ def load_log():
             response_data['gender'] = profile[2]
             response_data['targetCalories'] = profile[3]
 
-        # 讀取今日記錄
         cur.execute("SELECT weight, water, exercise, breakfast, breakfast_cal, lunch, lunch_cal, dinner, dinner_cal, snacks, snacks_cal FROM daily_logs WHERE user_id = %s AND log_date = %s", (user_id, today_str))
         log = cur.fetchone()
         if log:
@@ -483,3 +527,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"DEBUG: Starting Flask app on host 0.0.0.0, port {port}")
     app.run(host="0.0.0.0", port=port)
+
