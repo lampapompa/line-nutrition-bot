@@ -16,11 +16,9 @@
             color: #059669; 
             font-weight: 700;
         }
-        /* 針對 iOS 輸入框美化 */
         input[type="number"], input[type="text"], select, textarea {
             -webkit-appearance: none; -moz-appearance: none; appearance: none;
         }
-        /* 日曆樣式 */
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .calendar-day { text-align: center; padding: 8px; border-radius: 50%; position: relative; }
         .calendar-day.today { background-color: #a7f3d0; }
@@ -29,7 +27,6 @@
             position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
             width: 6px; height: 6px; background-color: #fb923c; border-radius: 50%;
         }
-        /* 目標建議按鈕樣式 */
         .goal-button { transition: all 0.2s; }
         .goal-button.selected {
             background-color: #10B981; color: white; border-color: #10B981;
@@ -40,7 +37,7 @@
 
     <div id="loading" class="flex justify-center items-center h-screen">
         <div class="text-center">
-            <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -217,7 +214,8 @@
         // --- 全域變數與狀態管理 ---
         // ===== 修改: 已為您換上您專屬的後端網址 =====
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
-        let liffId = "YOUR_LIFF_ID_HERE"; // 請填入您自己的 LIFF ID
+        // ==========================================
+        let liffId = "2008021259-NLyg2AWl"; 
         let currentUserId = null;
         let autosaveTimer = null;
         let trendsChart = null;
@@ -242,16 +240,15 @@
 
         async function main() {
             try {
-                // await liff.init({ liffId: liffId });
-                // if (!liff.isLoggedIn()) {
-                //     liff.login();
-                //     return;
-                // }
-                // const profile = await liff.getProfile();
-                // currentUserId = profile.userId;
-
-                // 為了測試，先寫死一個 User ID
-                currentUserId = "U123456789ABCDEF_TEST";
+                // ===== 啟用 LIFF 功能 =====
+                await liff.init({ liffId: liffId });
+                if (!liff.isLoggedIn()) {
+                    liff.login(); // 如果使用者沒登入，會自動導向登入頁面
+                    return; // 停止執行直到登入完成
+                }
+                const profile = await liff.getProfile();
+                currentUserId = profile.userId; // 從 LINE 取得真實的 User ID
+                // ===== 移除測試用的假ID =====
 
                 await loadProfileData();
                 await loadLogDataForDate(currentDate);
@@ -281,6 +278,7 @@
         // --- 資料庫溝通 (真實 API) ---
 
         async function saveProfileData() {
+            if (!currentUserId) return alert("無法取得使用者ID，請重新進入頁面。");
             const profileData = {
                 height: document.getElementById('height').value,
                 weight: document.getElementById('profile-weight').value,
@@ -335,6 +333,7 @@
         function triggerAutosave() {
             clearTimeout(autosaveTimer);
             autosaveTimer = setTimeout(async () => {
+                if (!currentUserId) return;
                 const logData = {};
                 document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => {
                     const key = el.dataset.field;
@@ -404,7 +403,6 @@
             const gender = document.getElementById('gender').value;
             const activityLevel = parseFloat(document.getElementById('activity-level').value);
 
-            // 更新目標熱量顯示
             const targetCalories = document.getElementById('target-calories').value;
             document.getElementById('log-target-calories').textContent = targetCalories || '...';
             
