@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 營養教練 - 每日記錄</title>
+    <title>AI 營養教練</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
@@ -17,9 +18,21 @@
         }
         /* 針對 iOS 輸入框美化 */
         input[type="number"], input[type="text"], select, textarea {
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
+            -webkit-appearance: none; -moz-appearance: none; appearance: none;
+        }
+        /* 日曆樣式 */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .calendar-day { text-align: center; padding: 8px; border-radius: 50%; position: relative; }
+        .calendar-day.today { background-color: #a7f3d0; }
+        .calendar-day.selected { background-color: #10B981; color: white; }
+        .calendar-day .completion-dot {
+            position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+            width: 6px; height: 6px; background-color: #fb923c; border-radius: 50%;
+        }
+        /* 目標建議按鈕樣式 */
+        .goal-button { transition: all 0.2s; }
+        .goal-button.selected {
+            background-color: #10B981; color: white; border-color: #10B981;
         }
     </style>
 </head>
@@ -27,7 +40,7 @@
 
     <div id="loading" class="flex justify-center items-center h-screen">
         <div class="text-center">
-            <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -38,11 +51,11 @@
     <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
         
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
-            <nav class="flex -mb-px space-x-6" aria-label="Tabs">
-                <button onclick="switchTab('profile')" class="tab-button active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+            <nav class="flex justify-center -mb-px space-x-6" aria-label="Tabs">
+                <button onclick="switchTab('profile')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
                     個人檔案
                 </button>
-                <button onclick="switchTab('log')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                <button onclick="switchTab('log')" class="tab-button active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
                     每日記錄
                 </button>
                 <button onclick="switchTab('trends')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
@@ -51,181 +64,497 @@
             </nav>
         </div>
 
-        <div id="admin-panel" class="hidden bg-yellow-100 p-3 rounded-lg">
-            <label for="user-selector" class="block text-sm font-medium text-yellow-800">管理員模式：正在檢視</label>
-            <select id="user-selector" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
-                </select>
-        </div>
-
         <div id="tab-content">
-            <div id="profile-tab" class="space-y-4">
-                <h2 class="text-xl font-bold">個人檔案與目標</h2>
+            <div id="profile-tab" class="hidden space-y-4">
+                <h2 class="text-xl font-bold">個人檔案與目標設定</h2>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">身高 (cm)</label>
-                    <input type="number" id="height" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                    <input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">體重 (kg)</label>
-                    <input type="number" id="profile-weight" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                    <input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">年齡</label>
-                    <input type="number" id="age" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                    <input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">性別</label>
-                    <select id="gender" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                    <select id="gender" class="profile-input mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                         <option value="male">男性</option>
                         <option value="female">女性</option>
                     </select>
                 </div>
-                <div class="bg-emerald-50 p-3 rounded-lg">
-                    <p class="text-sm text-gray-600">基礎代謝率 (BMR)</p>
-                    <p id="bmr-display" class="text-2xl font-bold text-emerald-600">--- kcal</p>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">活動量</label>
+                    <select id="activity-level" class="profile-input mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="1.2">靜態生活 (久坐 / 少運動)</option>
+                        <option value="1.55">普通活動 (每週運動3-5天)</option>
+                        <option value="1.9">動態生活 (高強度運動 / 勞力工作)</option>
+                    </select>
                 </div>
-                 <div>
-                    <label class="block text-sm font-medium text-gray-700">每日目標攝取熱量 (kcal)</label>
-                    <input type="number" id="target-calories" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-emerald-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">基礎代謝率 (BMR)</p>
+                        <p id="bmr-display" class="text-2xl font-bold text-emerald-600">---</p>
+                    </div>
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">每日總消耗 (TDEE)</p>
+                        <p id="tdee-display" class="text-2xl font-bold text-blue-600">---</p>
+                    </div>
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">設定您的每日目標熱量</label>
+                    <div id="goal-options" class="grid grid-cols-3 gap-2 mt-2">
+                        <button data-goal-type="maintain" class="goal-button border border-gray-300 rounded-md p-2 text-sm">維持體重<span class="block font-bold text-base">---</span></button>
+                        <button data-goal-type="mild_loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">溫和減重<span class="block font-bold text-base">---</span></button>
+                        <button data-goal-type="loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">積極減重<span class="block font-bold text-base">---</span></button>
+                    </div>
+                    <input type="hidden" id="target-calories">
+                </div>
+                <button id="save-profile-button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700">
+                    儲存設定
+                </button>
             </div>
 
-            <div id="log-tab" class="hidden space-y-4">
+            <div id="log-tab" class="space-y-4">
+                <div class="bg-white p-3 rounded-lg shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <button id="prev-month-btn" class="p-1">&lt;</button>
+                        <h3 id="calendar-month-year" class="font-bold text-lg"></h3>
+                        <button id="next-month-btn" class="p-1">&gt;</button>
+                    </div>
+                    <div class="calendar-grid text-sm text-gray-500 mb-2">
+                        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                    </div>
+                    <div id="calendar-days" class="calendar-grid"></div>
+                </div>
+
                 <div class="bg-blue-50 p-4 rounded-lg text-center">
                     <p class="text-sm text-gray-600">今日已攝取 / 目標熱量</p>
-                    <p class="text-2xl font-bold text-blue-600"><span id="today-calories">0</span> / <span id="log-target-calories">1500</span> kcal</p>
-                    <p id="calorie-status" class="text-sm font-medium text-green-600">剩餘額度充足！</p>
+                    <p class="text-2xl font-bold text-blue-600"><span id="today-calories">0</span> / <span id="log-target-calories">...</span> kcal</p>
                 </div>
+                
                 <h2 class="text-xl font-bold">飲食與生活記錄</h2>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">早餐</label>
-                    <textarea id="breakfast" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：鮪魚蛋餅、無糖豆漿"></textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">午餐</label>
-                    <textarea id="lunch" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：雞腿便當（飯吃一半）"></textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">晚餐</label>
-                    <textarea id="dinner" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：鮭魚、燙青菜、豆腐湯"></textarea>
-                </div>
-                 <div>
-                    <label class="block text-sm font-medium text-gray-700">點心 / 其他</label>
-                    <textarea id="snacks" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500"></textarea>
-                </div>
-                <h2 class="text-xl font-bold">身體數據</h2>
-                 <div>
-                    <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
-                    <input type="number" id="water" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
-                </div>
-                 <div>
-                    <label class="block text-sm font-medium text-gray-700">今日運動</label>
-                    <input type="text" id="exercise" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500" placeholder="範例：跑步 30 分鐘">
-                </div>
-                 <div>
-                    <label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label>
-                    <input type="number" id="weight" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                <div class="space-y-4" id="daily-log-inputs">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">早餐</label>
+                        <div class="flex gap-2">
+                            <textarea data-field="breakfast_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：鮪魚蛋餅"></textarea>
+                            <input data-field="breakfast_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">午餐</label>
+                        <div class="flex gap-2">
+                            <textarea data-field="lunch_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：雞腿便當"></textarea>
+                            <input data-field="lunch_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">晚餐</label>
+                        <div class="flex gap-2">
+                            <textarea data-field="dinner_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：鮭魚、燙青菜"></textarea>
+                            <input data-field="dinner_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">點心 / 其他</label>
+                        <div class="flex gap-2">
+                            <textarea data-field="snacks_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea>
+                            <input data-field="snacks_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal">
+                        </div>
+                    </div>
+                    <h2 class="text-xl font-bold pt-4">身體數據</h2>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
+                        <input data-field="water_cc" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">今日運動</label>
+                         <div class="flex gap-2">
+                            <input data-field="exercise_text" type="text" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步 30 分鐘">
+                            <input data-field="exercise_kcal" type="number" class="log-input calorie-input-expense mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
+                        </div>
+                    </div>
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label>
+                        <input data-field="daily_weight" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md">
+                    </div>
+                    <div class="flex items-center gap-4">
+                         <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
+                            <input data-field="capsule_used" type="checkbox" class="log-input h-5 w-5 rounded border-gray-300 text-emerald-600">
+                            <span>使用燃脂膠囊</span>
+                        </label>
+                        <input data-field="capsule_qty" type="number" class="log-input block w-1/4 border-gray-300 rounded-md" placeholder="數量">
+                    </div>
                 </div>
             </div>
 
             <div id="trends-tab" class="hidden space-y-4">
                  <h2 class="text-xl font-bold">進度追蹤</h2>
                  <div class="bg-white p-4 rounded-lg shadow">
-                    <p class="font-medium">一週熱量趨勢</p>
-                    <div class="h-48 flex justify-center items-center text-gray-400">圖表功能開發中...</div>
-                 </div>
-                 <div class="bg-white p-4 rounded-lg shadow">
-                    <p class="font-medium">一週體重趨勢</p>
-                    <div class="h-48 flex justify-center items-center text-gray-400">圖表功能開發中...</div>
+                    <canvas id="trendsChart"></canvas>
+                    <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
+                        <label class="flex items-center gap-1">
+                            <input type="checkbox" class="chart-toggle" data-dataset-index="1" style="accent-color: #ef4444;"> 熱量攝取
+                        </label>
+                        <label class="flex items-center gap-1">
+                            <input type="checkbox" class="chart-toggle" data-dataset-index="2" style="accent-color: #3b82f6;"> 飲水
+                        </label>
+                        <label class="flex items-center gap-1">
+                            <input type="checkbox" class="chart-toggle" data-dataset-index="3" style="accent-color: #f97316;"> 運動消耗
+                        </label>
+                    </div>
                  </div>
             </div>
         </div>
-
-        <button id="save-button" class="w-full bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors">
-            儲存今日紀錄
-        </button>
     </div>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
-        // --- Tab切換功能 ---
+        // --- 全域變數與狀態管理 ---
+        // ===== 修改: 已為您換上您專屬的後端網址 =====
+        const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
+        let liffId = "YOUR_LIFF_ID_HERE"; // 請填入您自己的 LIFF ID
+        let currentUserId = null;
+        let autosaveTimer = null;
+        let trendsChart = null;
+        let currentDate = new Date();
+
+        // --- Tab 與初始化 ---
         function switchTab(tabName) {
             ['profile', 'log', 'trends'].forEach(tabId => {
                 document.getElementById(tabId + '-tab').classList.add('hidden');
-                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.remove('active');
-                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.remove('active', 'text-gray-900');
+                document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('text-gray-500');
             });
             document.getElementById(tabName + '-tab').classList.remove('hidden');
             const button = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
-            button.classList.add('active');
-            button.classList.remove('text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+            button.classList.add('active', 'text-gray-900');
+            button.classList.remove('text-gray-500');
+
+            if (tabName === 'trends') {
+                renderChart();
+            }
         }
 
-        // --- ===== 修改 START: BMR 即時計算功能 ===== ---
-        /**
-         * 根據輸入的數值，即時計算並顯示 BMR 結果
-         */
-        function calculateAndDisplayBMR() {
-            // 1. 取得各個輸入欄位的值
+        async function main() {
+            try {
+                // await liff.init({ liffId: liffId });
+                // if (!liff.isLoggedIn()) {
+                //     liff.login();
+                //     return;
+                // }
+                // const profile = await liff.getProfile();
+                // currentUserId = profile.userId;
+
+                // 為了測試，先寫死一個 User ID
+                currentUserId = "U123456789ABCDEF_TEST";
+
+                await loadProfileData();
+                await loadLogDataForDate(currentDate);
+                renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                setupEventListeners();
+
+                switchTab('log'); // 預設進入每日記錄
+            } catch (error) {
+                console.error("初始化或資料載入失敗", error);
+                alert("系統初始化失敗，請稍後再試。");
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+            }
+        }
+        
+        function setupEventListeners() {
+            document.querySelectorAll('.profile-input').forEach(el => el.addEventListener('input', updateProfileCalculations));
+            document.querySelectorAll('.goal-button').forEach(btn => btn.addEventListener('click', selectGoal));
+            document.getElementById('save-profile-button').addEventListener('click', saveProfileData);
+            document.querySelectorAll('.log-input').forEach(el => el.addEventListener('input', handleLogInputChange));
+            document.getElementById('prev-month-btn').addEventListener('click', showPrevMonth);
+            document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
+            document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
+        }
+
+        // --- 資料庫溝通 (真實 API) ---
+
+        async function saveProfileData() {
+            const profileData = {
+                height: document.getElementById('height').value,
+                weight: document.getElementById('profile-weight').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                activityLevel: document.getElementById('activity-level').value,
+                targetCalories: document.getElementById('target-calories').value,
+            };
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/profile?userId=${currentUserId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: profileData })
+                });
+                if (!response.ok) throw new Error('儲存失敗');
+                alert("個人設定已儲存！");
+            } catch (error) {
+                console.error("儲存個人檔案失敗:", error);
+                alert("儲存個人檔案失敗，請檢查網路連線。");
+            }
+        }
+
+        async function loadProfileData() {
+            if (!currentUserId) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/profile?userId=${currentUserId}`);
+                if (!response.ok) throw new Error('讀取失敗');
+                const data = await response.json();
+                
+                if (data && Object.keys(data).length > 0) {
+                    document.getElementById('height').value = data.height || '';
+                    document.getElementById('profile-weight').value = data.profile_weight || '';
+                    document.getElementById('age').value = data.age || '';
+                    document.getElementById('gender').value = data.gender || 'male';
+                    document.getElementById('activity-level').value = data.activity_level || 1.55;
+                    document.getElementById('target-calories').value = data.target_calories || '';
+                    updateProfileCalculations();
+                    
+                    const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => btn.dataset.finalKcal == data.target_calories);
+                    if (selectedBtn) {
+                        document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
+                        selectedBtn.classList.add('selected');
+                    }
+                } else {
+                     updateProfileCalculations();
+                }
+            } catch (error) {
+                console.error("讀取個人檔案失敗:", error);
+            }
+        }
+
+        function triggerAutosave() {
+            clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(async () => {
+                const logData = {};
+                document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => {
+                    const key = el.dataset.field;
+                    const value = el.type === 'checkbox' ? el.checked : (el.value === '' ? null : el.value);
+                    logData[key] = value;
+                });
+                try {
+                    await fetch(`${API_BASE_URL}/api/log`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: currentUserId, date: formatDate(currentDate), data: logData })
+                    });
+                } catch (error) {
+                    console.error(`自動儲存 ${formatDate(currentDate)} 的資料失敗:`, error);
+                }
+            }, 1500);
+        }
+
+        async function loadLogDataForDate(date) {
+            document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => {
+                 el.type === 'checkbox' ? el.checked = false : el.value = '';
+            });
+            updateCalorieSummary();
+
+            if (!currentUserId) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/log?userId=${currentUserId}&date=${formatDate(date)}`);
+                if (!response.ok) throw new Error('讀取失敗');
+                const data = await response.json();
+                
+                if (data) {
+                    Object.keys(data).forEach(key => {
+                        const el = document.querySelector(`#daily-log-inputs [data-field="${key}"]`);
+                        if (el) {
+                            if (el.type === 'checkbox') {
+                                el.checked = data[key];
+                            } else {
+                                el.value = data[key] || '';
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
+            } finally {
+                updateCalorieSummary();
+            }
+        }
+
+        async function loadChartData() {
+            if (!currentUserId) return { labels: [], weight: [], calories: [], water: [], exercise: [] };
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/trends?userId=${currentUserId}`);
+                if (!response.ok) throw new Error('讀取失敗');
+                return await response.json();
+            } catch (error) {
+                console.error("讀取圖表資料失敗:", error);
+                return { labels: [], weight: [], calories: [], water: [], exercise: [] };
+            }
+        }
+
+        // --- 個人檔案 Tab ---
+        function updateProfileCalculations() {
             const height = parseFloat(document.getElementById('height').value);
             const weight = parseFloat(document.getElementById('profile-weight').value);
             const age = parseFloat(document.getElementById('age').value);
             const gender = document.getElementById('gender').value;
-            const bmrDisplay = document.getElementById('bmr-display');
+            const activityLevel = parseFloat(document.getElementById('activity-level').value);
 
-            // 2. 檢查所有欄位是否都有有效數值 (大於0)
+            // 更新目標熱量顯示
+            const targetCalories = document.getElementById('target-calories').value;
+            document.getElementById('log-target-calories').textContent = targetCalories || '...';
+            
             if (height > 0 && weight > 0 && age > 0) {
-                let bmr = 0;
-                // 3. 使用 Mifflin-St Jeor 公式計算 BMR
-                if (gender === 'male') {
-                    // 男性: 10 * 體重(kg) + 6.25 * 身高(cm) - 5 * 年齡 + 5
-                    bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5;
-                } else { // female
-                    // 女性: 10 * 體重(kg) + 6.25 * 身高(cm) - 5 * 年齡 - 161
-                    bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161;
-                }
-                // 4. 將計算結果 (四捨五入到整數) 更新到畫面上
-                bmrDisplay.textContent = `${Math.round(bmr)} kcal`;
+                let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
+                bmr = Math.round(bmr);
+                let tdee = Math.round(bmr * activityLevel);
+                
+                document.getElementById('bmr-display').textContent = `${bmr} kcal`;
+                document.getElementById('tdee-display').textContent = `${tdee} kcal`;
+                updateGoalOptions(tdee);
             } else {
-                // 如果有任何欄位是空的或無效，就顯示預設文字
-                bmrDisplay.textContent = '--- kcal';
+                document.getElementById('bmr-display').textContent = '---';
+                document.getElementById('tdee-display').textContent = '---';
+                updateGoalOptions(null);
             }
         }
-        // --- ===== 修改 END ===== ---
+        
+        function updateGoalOptions(tdee) {
+            const maintainBtn = document.querySelector('[data-goal-type="maintain"]');
+            const mildLossBtn = document.querySelector('[data-goal-type="mild_loss"]');
+            const lossBtn = document.querySelector('[data-goal-type="loss"]');
+            
+            if (tdee) {
+                const maintainKcal = tdee;
+                const mildLossKcal = tdee - 300;
+                const lossKcal = tdee - 500;
 
-
-        // --- 主程式 ---
-        async function main() {
-            // LIFF 初始化，這是與 LINE 溝通的起點
-            // 我們稍後會在這裡填上從 LINE 開發者後台取得的 LIFF ID
-            // await liff.init({ liffId: "YOUR_LIFF_ID_HERE" }); 
-
-            // 顯示主畫面，隱藏載入畫面
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('app').classList.remove('hidden');
-
-            // --- ===== 修改 START: 綁定事件監聽 ===== ---
-            // 1. 找到所有需要監聽的輸入欄位
-            const heightInput = document.getElementById('height');
-            const weightInput = document.getElementById('profile-weight');
-            const ageInput = document.getElementById('age');
-            const genderSelect = document.getElementById('gender');
-
-            // 2. 建立一個包含這些欄位的陣列，方便統一處理
-            const inputsToWatch = [heightInput, weightInput, ageInput, genderSelect];
-
-            // 3. 為陣列中的每一個欄位加上事件監聽器
-            inputsToWatch.forEach(element => {
-                // 如果是下拉選單(select)，就用 'change' 事件；如果是輸入框，就用 'input' 事件
-                const eventType = (element.tagName.toLowerCase() === 'select') ? 'change' : 'input';
-                element.addEventListener(eventType, calculateAndDisplayBMR);
-            });
-            // --- ===== 修改 END ===== ---
-
-
-            // 之後，我們會在這裡加入讀取和儲存資料的核心邏輯
+                maintainBtn.querySelector('span').textContent = `${maintainKcal} kcal`;
+                mildLossBtn.querySelector('span').textContent = `${mildLossKcal} kcal`;
+                lossBtn.querySelector('span').textContent = `${lossKcal} kcal`;
+                
+                maintainBtn.dataset.finalKcal = maintainKcal;
+                mildLossBtn.dataset.finalKcal = mildLossKcal;
+                lossBtn.dataset.finalKcal = lossKcal;
+            } else {
+                [maintainBtn, mildLossBtn, lossBtn].forEach(btn => btn.querySelector('span').textContent = '---');
+            }
         }
 
-        // 執行主程式
+        function selectGoal(event) {
+            document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
+            const selectedButton = event.currentTarget;
+            selectedButton.classList.add('selected');
+            const finalKcal = selectedButton.dataset.finalKcal;
+            if (finalKcal) {
+                document.getElementById('target-calories').value = finalKcal;
+                document.getElementById('log-target-calories').textContent = finalKcal;
+            }
+        }
+
+        // --- 每日記錄 Tab ---
+        function handleLogInputChange() {
+            updateCalorieSummary();
+            triggerAutosave();
+        }
+
+        function updateCalorieSummary() {
+            let totalKcal = 0;
+            document.querySelectorAll('.calorie-input').forEach(input => {
+                totalKcal += parseFloat(input.value) || 0;
+            });
+            document.getElementById('today-calories').textContent = totalKcal;
+        }
+
+        function renderCalendar(year, month) {
+            const calendarMonthYear = document.getElementById('calendar-month-year');
+            const calendarDays = document.getElementById('calendar-days');
+            calendarMonthYear.textContent = `${year}年 ${month + 1}月`;
+            calendarDays.innerHTML = '';
+
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+
+            for (let i = 0; i < firstDayOfMonth; i++) calendarDays.insertAdjacentHTML('beforeend', '<div></div>');
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayEl = document.createElement('div');
+                dayEl.textContent = day;
+                dayEl.classList.add('calendar-day', 'cursor-pointer');
+                if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) dayEl.classList.add('today');
+                if (year === currentDate.getFullYear() && month === currentDate.getMonth() && day === currentDate.getDate()) dayEl.classList.add('selected');
+                
+                dayEl.addEventListener('click', () => {
+                    currentDate = new Date(year, month, day);
+                    renderCalendar(year, month);
+                    loadLogDataForDate(currentDate);
+                });
+                calendarDays.appendChild(dayEl);
+            }
+        }
+        
+        function showPrevMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+            loadLogDataForDate(currentDate);
+        }
+        function showNextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+            loadLogDataForDate(currentDate);
+        }
+
+        // --- 進度追蹤 Tab ---
+        async function renderChart() {
+            const chartData = await loadChartData();
+            const ctx = document.getElementById('trendsChart').getContext('2d');
+            if (trendsChart) trendsChart.destroy();
+
+            trendsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [
+                        { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true,},
+                        { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: true, yAxisID: 'yKcal',},
+                        { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: true, yAxisID: 'yKcal',},
+                        { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#f97316', hidden: true, yAxisID: 'yKcal',}
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        yWeight: { type: 'linear', position: 'left', title: { display: true, text: '公斤 (kg)'} },
+                        yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.'}, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+            document.querySelectorAll('.chart-toggle').forEach(el => {
+                trendsChart.setDatasetVisibility(el.dataset.datasetIndex, el.checked);
+            });
+            trendsChart.update();
+        }
+        
+        function updateChartVisibility(event) {
+            if (!trendsChart) return;
+            trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked);
+            trendsChart.update();
+        }
+
+        // --- 工具函式 ---
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        // --- 執行主程式 ---
         main();
     </script>
 </body>
