@@ -1,6 +1,6 @@
 import os
 import psycopg2
-import psycopg2.extras # 引入 DictCursor
+import psycopg2.extras
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
@@ -12,16 +12,13 @@ CORS(app)
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # --- 資料庫輔助函式 ---
-
 def get_db_connection():
-    """建立並返回一個 PostgreSQL 資料庫連線"""
     if not DATABASE_URL:
         raise ValueError("DATABASE_URL environment variable is not set")
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 def init_db():
-    """初始化資料庫，建立或更新所需的資料表"""
     print("正在檢查並初始化資料庫...")
     conn = get_db_connection()
     with conn.cursor() as cur:
@@ -29,27 +26,22 @@ def init_db():
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
-                height REAL,
-                profile_weight REAL,
-                age INTEGER,
-                gender VARCHAR(10),
-                activity_level REAL,
-                target_calories INTEGER,
-                water_goal INTEGER,
-                personal_notes TEXT,
-                last_updated DATE
+                height REAL, profile_weight REAL, age INTEGER, gender VARCHAR(10),
+                activity_level REAL, target_calories INTEGER,
+                water_goal INTEGER, personal_notes TEXT, last_updated DATE,
+                exercise_goal INTEGER, capsule_goal INTEGER
             );
         ''')
         # 每日記錄資料表
         cur.execute('''
             CREATE TABLE IF NOT EXISTS daily_logs (
                 id SERIAL PRIMARY KEY,
-                user_id VARCHAR(255) NOT NULL,
-                log_date DATE NOT NULL,
+                user_id VARCHAR(255) NOT NULL, log_date DATE NOT NULL,
                 breakfast_text TEXT, breakfast_kcal INTEGER,
                 lunch_text TEXT, lunch_kcal INTEGER,
                 dinner_text TEXT, dinner_kcal INTEGER,
                 snacks_text TEXT, snacks_kcal INTEGER,
+                drinks_text TEXT, drinks_kcal INTEGER,
                 water_cc INTEGER,
                 exercise_text TEXT, exercise_kcal INTEGER,
                 daily_weight REAL,
@@ -57,14 +49,24 @@ def init_db():
                 UNIQUE(user_id, log_date)
             );
         ''')
-        # 檢查並新增欄位 (為了讓舊用戶也能無痛升級)
-        profile_columns = ['water_goal', 'personal_notes', 'last_updated']
-        for col in profile_columns:
+        
+        # 檢查並新增欄位 (向下相容)
+        profile_columns_to_check = {
+            'water_goal': 'INTEGER', 'personal_notes': 'TEXT', 'last_updated': 'DATE',
+            'exercise_goal': 'INTEGER', 'capsule_goal': 'INTEGER'
+        }
+        for col, data_type in profile_columns_to_check.items():
             cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles' AND column_name=%s", (col,))
             if cur.fetchone() is None:
-                data_type = "INTEGER" if col == "water_goal" else "TEXT" if col == "personal_notes" else "DATE"
                 cur.execute(f"ALTER TABLE user_profiles ADD COLUMN {col} {data_type};")
                 print(f"新增 {col} 欄位至 user_profiles")
+
+        log_columns_to_check = {'drinks_text': 'TEXT', 'drinks_kcal': 'INTEGER'}
+        for col, data_type in log_columns_to_check.items():
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='daily_logs' AND column_name=%s", (col,))
+            if cur.fetchone() is None:
+                cur.execute(f"ALTER TABLE daily_logs ADD COLUMN {col} {data_type};")
+                print(f"新增 {col} 欄位至 daily_logs")
 
     conn.commit()
     conn.close()
@@ -83,17 +85,19 @@ def handle_profile():
             data = request.json['data']
             today = date.today()
             cur.execute('''
-                INSERT INTO user_profiles (user_id, height, profile_weight, age, gender, activity_level, target_calories, water_goal, personal_notes, last_updated)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO user_profiles (user_id, height, profile_weight, age, gender, activity_level, target_calories, water_goal, exercise_goal, capsule_goal, personal_notes, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                     height = EXCLUDED.height, profile_weight = EXCLUDED.profile_weight, age = EXCLUDED.age,
                     gender = EXCLUDED.gender, activity_level = EXCLUDED.activity_level, 
                     target_calories = EXCLUDED.target_calories, water_goal = EXCLUDED.water_goal, 
+                    exercise_goal = EXCLUDED.exercise_goal, capsule_goal = EXCLUDED.capsule_goal,
                     personal_notes = EXCLUDED.personal_notes, last_updated = EXCLUDED.last_updated
             ''', (
                 user_id, data.get('height'), data.get('weight'), data.get('age'), 
                 data.get('gender'), data.get('activityLevel'), data.get('targetCalories'),
-                data.get('waterGoal'), data.get('personalNotes'), today
+                data.get('waterGoal'), data.get('exerciseGoal'), data.get('capsuleGoal'),
+                data.get('personalNotes'), today
             ))
             conn.commit()
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
@@ -115,7 +119,6 @@ def handle_log():
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         if request.method == 'POST':
             req_data = request.json
-            # ... (此部分與 V1.5 相同)
             user_id = req_data.get('userId')
             log_date = req_data.get('date')
             log_data = req_data.get('data')
@@ -124,6 +127,7 @@ def handle_log():
             fields = [
                 'breakfast_text', 'breakfast_kcal', 'lunch_text', 'lunch_kcal',
                 'dinner_text', 'dinner_kcal', 'snacks_text', 'snacks_kcal',
+                'drinks_text', 'drinks_kcal',
                 'water_cc', 'exercise_text', 'exercise_kcal', 'daily_weight',
                 'capsule_used', 'capsule_qty'
             ]
@@ -139,17 +143,14 @@ def handle_log():
             return jsonify({'status': 'success', 'message': f'Log for {log_date} saved.'})
 
         if request.method == 'GET':
-            # ... (此部分與 V1.5 相同)
             user_id = request.args.get('userId')
             log_date = request.args.get('date')
             if not all([user_id, log_date]): return jsonify({"error": "userId and date are required"}), 400
-                
             cur.execute('SELECT * FROM daily_logs WHERE user_id = %s AND log_date = %s', (user_id, log_date))
             log_entry = cur.fetchone()
             return jsonify(dict(log_entry) if log_entry else None)
     conn.close()
 
-# ===== 新增: 完成圓點 API =====
 @app.route('/api/completion_dots', methods=['GET'])
 def get_completion_dots():
     user_id = request.args.get('userId')
@@ -160,55 +161,48 @@ def get_completion_dots():
     conn = get_db_connection()
     with conn.cursor() as cur:
         cur.execute('''
-            SELECT DISTINCT EXTRACT(DAY FROM log_date) 
-            FROM daily_logs 
-            WHERE user_id = %s 
-              AND EXTRACT(YEAR FROM log_date) = %s 
-              AND EXTRACT(MONTH FROM log_date) = %s
-              AND (breakfast_kcal IS NOT NULL OR lunch_kcal IS NOT NULL OR dinner_kcal IS NOT NULL) -- 確保有填寫熱量
+            SELECT DISTINCT EXTRACT(DAY FROM log_date) FROM daily_logs 
+            WHERE user_id = %s AND EXTRACT(YEAR FROM log_date) = %s AND EXTRACT(MONTH FROM log_date) = %s
+            AND (breakfast_kcal IS NOT NULL OR lunch_kcal IS NOT NULL OR dinner_kcal IS NOT NULL OR drinks_kcal IS NOT NULL)
         ''', (user_id, year, month))
         days_with_logs = [int(item[0]) for item in cur.fetchall()]
     conn.close()
     return jsonify(days_with_logs)
 
-# ===== 升級: 趨勢圖表 API (支援日期範圍) =====
 @app.route('/api/trends', methods=['GET'])
 def get_trends():
     user_id = request.args.get('userId')
-    range_type = request.args.get('range', '7days')
+    range_param = request.args.get('range', '7days')
     if not user_id: return jsonify({"error": "userId is required"}), 400
     
     today = datetime.now().date()
+    start_date = today - timedelta(days=6) # Default to 7 days
     
-    if range_type == '30days':
-        start_date = today - timedelta(days=29)
-    elif range_type == 'this_month':
+    if range_param == 'this_month':
         start_date = today.replace(day=1)
-    else: # 預設 7 天
-        start_date = today - timedelta(days=6)
+    elif range_param == '28days':
+        start_date = today - timedelta(days=27)
+    else: # Handles '7days' or a custom date string like 'YYYY-MM-DD'
+        try:
+            start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = today - timedelta(days=6)
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute('''
-            SELECT 
-                log_date, daily_weight, 
-                COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) as calories,
-                water_cc, exercise_kcal
-            FROM daily_logs 
-            WHERE user_id = %s AND log_date BETWEEN %s AND %s
-            ORDER BY log_date ASC
+            SELECT log_date, daily_weight, 
+                   COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories,
+                   water_cc, exercise_kcal
+            FROM daily_logs WHERE user_id = %s AND log_date BETWEEN %s AND %s ORDER BY log_date ASC
         ''', (user_id, start_date, today))
         logs = cur.fetchall()
     conn.close()
     
-    # 建立一個包含所有日期的標籤列表
     labels = []
     current_date_for_labels = start_date
     while current_date_for_labels <= today:
-        if range_type == 'this_month':
-            labels.append(current_date_for_labels.day)
-        else:
-            labels.append(current_date_for_labels.strftime('%-m/%-d'))
+        labels.append(current_date_for_labels.strftime('%-m/%-d'))
         current_date_for_labels += timedelta(days=1)
 
     logs_dict = {log['log_date'].strftime('%Y-%m-%d'): log for log in logs}
@@ -224,10 +218,8 @@ def get_trends():
             trend_data['water'].append(log['water_cc'])
             trend_data['exercise'].append(log['exercise_kcal'])
         else:
-            trend_data['weight'].append(None)
-            trend_data['calories'].append(None)
-            trend_data['water'].append(None)
-            trend_data['exercise'].append(None)
+            trend_data['weight'].append(None); trend_data['calories'].append(None);
+            trend_data['water'].append(None); trend_data['exercise'].append(None);
         current_date_for_data += timedelta(days=1)
             
     return jsonify({ 'labels': labels, **trend_data })
