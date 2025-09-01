@@ -100,6 +100,9 @@ def handle_log():
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         if request.method == 'POST':
+            # vvvvv 加上這一行 vvvvv
+            print(f"收到來自前端的請求內容: {request.json}") 
+            # ^^^^^ 加上這一行 ^^^^^
             req_data = request.json
             user_id = req_data.get('userId')
             log_date = req_data.get('date')
