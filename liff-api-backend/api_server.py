@@ -290,9 +290,18 @@ def get_all_users():
             expiry = user.get('expiry_timestamp')
             if expiry:
                 user['expiry_timestamp'] = expiry.astimezone(TAIPEI_TZ).isoformat()
-                if expiry > now_utc: user['computed_status'] = 'Active'
-                else: user['computed_status'] = 'Expired'
-            else: user['computed_status'] = 'Inactive'
+                # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 修改的判斷邏輯 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+                if expiry <= now_utc:
+                    user['computed_status'] = 'Expired'
+                # 先判斷是否在 7 天內到期
+                elif expiry <= now_utc + timedelta(days=7):
+                    user['computed_status'] = 'Expiring' # 新增的狀態
+                # 如果沒過期，也沒即將到期，那才是 Active
+                else:
+                    user['computed_status'] = 'Active'
+                # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 修改結束 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            else:
+                user['computed_status'] = 'Inactive'
             users.append(user)
     conn.close()
     return jsonify(users)
