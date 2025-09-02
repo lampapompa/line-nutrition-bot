@@ -6,29 +6,15 @@
     <title>管理員後台</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .tooltip { position: relative; display: inline-block; }
-        .tooltip .tooltiptext {
-            visibility: hidden; width: 120px; background-color: #555; color: #fff;
-            text-align: center; border-radius: 6px; padding: 5px 0;
-            position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -60px;
-            opacity: 0; transition: opacity 0.3s;
-        }
-        .tooltip .tooltiptext::after {
-            content: ""; position: absolute; top: 100%; left: 50%;
-            margin-left: -5px; border-width: 5px; border-style: solid;
-            border-color: #555 transparent transparent transparent;
-        }
-        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
         .toast {
             visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333;
-            color: #fff; text-align: center; border-radius: 2px; padding: 16px;
+            color: #fff; text-align: center; border-radius: 6px; padding: 16px;
             position: fixed; z-index: 101; left: 50%; bottom: 30px;
+            opacity: 0; transition: visibility 0s 2.5s, opacity 0.5s linear;
         }
-        .toast.show { visibility: visible; -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
-        @-webkit-keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
-        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
-        @-webkit-keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
-        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        .toast.show {
+            visibility: visible; opacity: 1; transition: opacity 0.5s linear;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -38,41 +24,43 @@
     </div>
 
     <div id="error-page" class="hidden flex justify-center items-center h-screen">
-        <p class="text-red-500">權限不足，您不是管理員。</p>
+        <p class="text-red-500 font-bold text-lg">權限不足或初始化失敗</p>
     </div>
 
-    <div id="app" class="hidden container mx-auto p-4">
-        <h1 class="text-2xl font-bold mb-4">會員管理儀表板</h1>
-        <div class="bg-white shadow-md rounded my-6">
-            <table class="min-w-full table-auto">
-                <thead class="bg-gray-200">
+    <div id="app" class="hidden container mx-auto p-4 md:p-6">
+        <h1 class="text-3xl font-bold mb-6">會員管理儀表板</h1>
+        <div class="bg-white shadow-md rounded my-6 overflow-x-auto">
+            <table class="min-w-full table-auto text-sm">
+                <thead class="bg-gray-200 text-gray-600 uppercase">
                     <tr>
-                        <th class="px-4 py-2 text-left">會員名稱</th>
-                        <th class="px-4 py-2 text-left">狀態</th>
-                        <th class="px-4 py-2 text-left">會籍到期於</th>
-                        <th class="px-4 py-2 text-left">權限設定</th>
-                        <th class="px-4 py-2 text-left">教練備註</th>
+                        <th class="py-3 px-4 text-left">LINE 名稱</th>
+                        <th class="py-3 px-4 text-left">管理員暱稱</th>
+                        <th class="py-3 px-4 text-left">狀態</th>
+                        <th class="py-3 px-4 text-left">會籍到期於</th>
+                        <th class="py-3 px-4 text-left min-w-[320px]">權限設定</th>
+                        <th class="py-3 px-4 text-left">教練備註</th>
                     </tr>
                 </thead>
-                <tbody id="user-list-body">
-                    </tbody>
+                <tbody id="user-list-body" class="text-gray-700">
+                    <!-- User rows will be inserted here by JavaScript -->
+                </tbody>
             </table>
         </div>
     </div>
     
-    <div id="toast" class="toast">儲存成功！</div>
+    <div id="toast" class="toast"></div>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
-        let liffId = "2008021259-NLyg2AWl"; // 請換成您自己的 LIFF ID
+        let liffId = "2008021259-NLyg2AWl"; // 請確認這是您管理後台專用的 LIFF ID
         let currentAdminId = null;
 
         function showToast(message) {
             const toast = document.getElementById('toast');
             toast.textContent = message;
-            toast.className = "toast show";
-            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+            toast.classList.add("show");
+            setTimeout(() => { toast.classList.remove("show"); }, 2500);
         }
 
         async function updateUser(userId, payload) {
@@ -85,13 +73,16 @@
                     },
                     body: JSON.stringify({ userId, ...payload })
                 });
-                if (!response.ok) throw new Error('更新失敗');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || '更新失敗');
+                }
                 const result = await response.json();
                 showToast('儲存成功！');
                 return result.user;
             } catch (error) {
                 console.error('更新失敗:', error);
-                showToast('儲存失敗，請檢查網路');
+                showToast(`儲存失敗: ${error.message}`);
                 return null;
             }
         }
@@ -99,32 +90,43 @@
         function renderUserRow(user) {
             const now = new Date();
             const expiryDate = user.expiry_timestamp ? new Date(user.expiry_timestamp) : null;
-            const isExpired = expiryDate ? expiryDate < now : true;
             
-            const statusClass = user.computed_status === 'Active' ? 'text-green-600' : 'text-red-600';
+            const statusClass = user.computed_status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
             const expiryText = expiryDate ? expiryDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
+            const displayName = user.display_name || '(尚未同步)';
+            const adminNickname = user.admin_nickname || '';
 
             return `
-                <tr id="user-row-${user.user_id}" class="border-b">
-                    <td class="px-4 py-2">
-                        <a href="/liff?targetUserId=${user.user_id}" target="_blank" class="text-blue-600 hover:underline" title="點擊以管理員身份查看此會員的日誌">
-                            ${user.display_name || '未命名'}
+                <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="py-3 px-4">
+                        <a href="/liff?targetUserId=${user.user_id}&operatorId=${currentAdminId}" target="_blank" class="text-blue-600 hover:underline" title="點擊以管理員身份查看此會員的日誌">
+                            ${displayName}
                         </a>
                     </td>
-                    <td class="px-4 py-2 font-semibold ${statusClass}">${user.computed_status}</td>
-                    <td class="px-4 py-2 text-sm text-gray-600">${expiryText}</td>
-                    <td class="px-4 py-2 space-x-1">
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '1h')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600">+1h</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '1d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600">+1d</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '7d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600">+7d</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '28d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600">+28d</button>
-                        <input type="datetime-local" onchange="handleExpiryUpdate('${user.user_id}', 'custom', this.value)" class="border rounded px-1 py-0.5 text-xs">
-                        <button onclick="handleExpiryUpdate('${user.user_id}', 'clear')" class="bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600">清除</button>
+                    <td class="py-3 px-4">
+                        <input type="text" value="${adminNickname}" 
+                               onchange="handleNicknameUpdate('${user.user_id}', this.value)"
+                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                               placeholder="設定暱稱...">
                     </td>
-                    <td class="px-4 py-2">
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs ${statusClass}">
+                            ${user.computed_status}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 text-gray-600">${expiryText}</td>
+                    <td class="py-3 px-4 space-x-1">
+                        <button onclick="handleExpiryUpdate('${user.user_id}', '1h')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+1h</button>
+                        <button onclick="handleExpiryUpdate('${user.user_id}', '1d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+1d</button>
+                        <button onclick="handleExpiryUpdate('${user.user_id}', '7d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+7d</button>
+                        <button onclick="handleExpiryUpdate('${user.user_id}', '28d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+28d</button>
+                        <input type="datetime-local" onchange="handleExpiryUpdate('${user.user_id}', 'custom', this.value)" class="border rounded px-1 py-0.5 text-xs">
+                        <button onclick="handleExpiryUpdate('${user.user_id}', 'clear')" class="bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition-colors">清除</button>
+                    </td>
+                    <td class="py-3 px-4">
                         <input type="text" value="${user.admin_notes || ''}" 
                                onchange="handleNotesUpdate('${user.user_id}', this.value)"
-                               class="w-full border rounded px-2 py-1 text-sm" 
+                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
                                placeholder="新增備註...">
                     </td>
                 </tr>
@@ -132,42 +134,46 @@
         }
 
         function updateRowUI(userId, updatedUserData) {
-            const newRowHTML = renderUserRow(updatedUserData);
-            const rowElement = document.getElementById(`user-row-${userId}`);
-            if (rowElement) {
-                rowElement.outerHTML = newRowHTML; // Replace the entire row to re-bind events implicitly
-            }
+             const rowElement = document.getElementById(`user-row-${userId}`);
+             if(rowElement) {
+                // Merge old data with new data to prevent missing fields
+                const oldDisplayName = rowElement.querySelector('a').textContent.trim();
+                const mergedUser = {
+                    ...updatedUserData,
+                    display_name: updatedUserData.display_name || oldDisplayName
+                };
+                rowElement.outerHTML = renderUserRow(mergedUser);
+             }
         }
 
         async function handleExpiryUpdate(userId, action, customValue = null) {
             const payload = { expiryAction: action };
             if (action === 'custom') {
-                if (!customValue) return; // Don't do anything if date is cleared
+                if (!customValue) return;
                 payload.customExpiry = new Date(customValue).toISOString();
             }
             const updatedUser = await updateUser(userId, payload);
             if (updatedUser) {
-                // To get the computed status, we need to fetch all users again or compute on client side
-                // For simplicity, re-rendering the row with the direct result
-                const now = new Date();
-                const expiry = updatedUser.expiry_timestamp ? new Date(updatedUser.expiry_timestamp) : null;
-                updatedUser.computed_status = expiry && expiry > now ? 'Active' : 'Expired';
-                if(!expiry) updatedUser.computed_status = 'Inactive';
-                
-                updateRowUI(userId, { ...updatedUser, display_name: document.querySelector(`#user-row-${userId} a`).textContent.trim() });
+                updateRowUI(userId, updatedUser);
             }
         }
         
         async function handleNotesUpdate(userId, notes) {
-            await updateUser(userId, { adminNotes: notes });
+            const updatedUser = await updateUser(userId, { adminNotes: notes });
+            if (updatedUser) updateRowUI(userId, updatedUser);
+        }
+
+        async function handleNicknameUpdate(userId, nickname) {
+            const updatedUser = await updateUser(userId, { adminNickname: nickname });
+            if (updatedUser) updateRowUI(userId, updatedUser);
         }
 
         async function main() {
             try {
                 await liff.init({ liffId });
                 if (!liff.isLoggedIn()) {
-                    document.getElementById('loading').textContent = '請先登入 LINE';
-                    liff.login();
+                    document.getElementById('loading').textContent = '請先登入 LINE 以驗證身份';
+                    liff.login({ redirectUri: window.location.href });
                     return;
                 }
 
@@ -175,6 +181,7 @@
                 currentAdminId = profile.userId;
 
                 const adminCheckRes = await fetch(`${API_BASE_URL}/api/admin/check?userId=${currentAdminId}`);
+                if(!adminCheckRes.ok) throw new Error('管理員身份驗證失敗');
                 const { isAdmin } = await adminCheckRes.json();
 
                 if (!isAdmin) {
@@ -188,6 +195,7 @@
                 const usersRes = await fetch(`${API_BASE_URL}/api/admin/users`, {
                     headers: { 'X-Operator-User-Id': currentAdminId }
                 });
+                if(!usersRes.ok) throw new Error('無法獲取會員列表');
                 const users = await usersRes.json();
 
                 const userListBody = document.getElementById('user-list-body');
