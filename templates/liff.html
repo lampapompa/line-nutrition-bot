@@ -30,6 +30,27 @@
         .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .range-btn.active { background-color: #10B981; color: white; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+
+        /* --- 新增的 CSS 樣式 --- */
+        .tall-input { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .quick-add-btn {
+            background-color: #e5e7eb; color: #4b5563;
+            padding: 0.5rem 0.75rem; font-size: 0.75rem; line-height: 1rem;
+            border-radius: 0.375rem; transition: background-color 0.2s;
+        }
+        .quick-add-btn:hover { background-color: #d1d5db; }
+
+        .progress-bar-container {
+            background-color: #e5e7eb; border-radius: 9999px;
+            height: 8px; width: 100%; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; border-radius: 9999px;
+            transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out;
+        }
+        .progress-bar-green { background-color: #22c55e; }
+        .progress-bar-yellow { background-color: #f59e0b; }
+        .progress-bar-red { background-color: #ef4444; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
@@ -47,10 +68,19 @@
     </div>
 
     <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
-       
-        <div id="admin-view-banner" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-3 rounded-md" role="alert">
-          <p class="font-bold">管理員模式</p>
-          <p class="text-sm">您正在檢視 <span id="target-user-display-name" class="font-semibold"></span> 的資料。</p>
+        
+        <div id="admin-view-banner" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-3 rounded-md space-y-2" role="alert">
+            <div>
+                <p class="font-bold">管理員模式</p>
+                <p class="text-sm">您正在檢視 <span id="target-user-display-name" class="font-semibold"></span> 的資料。</p>
+            </div>
+            <div class="text-sm">
+                <a id="admin-link" href="/admin" target="_blank" class="text-blue-600 hover:underline">返回會員管理列表</a>
+            </div>
+            <div id="admin-notes-display" class="hidden text-xs bg-yellow-50 p-2 rounded border border-yellow-200">
+                <p class="font-semibold mb-1">教練備註:</p>
+                <p id="admin-notes-content" class="whitespace-pre-wrap"></p>
+            </div>
         </div>
         
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
@@ -124,13 +154,42 @@
             </div>
 
             <div id="log-tab" class="hidden space-y-4">
-                <div id="goal-dashboard" class="bg-blue-50 p-3 rounded-lg text-center space-y-2">
-                    <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
-                        <div><p>熱量 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p></div>
-                        <div><p>飲水 (c.c.)</p><p class="font-bold text-sm text-blue-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p></div>
-                        <div><p>運動 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p></div>
+                <div id="goal-dashboard-new" class="bg-white p-3 rounded-lg shadow-sm space-y-3">
+                    <div id="main-metric-calories" class="p-3 rounded-lg bg-blue-50">
+                        <p class="text-sm font-medium text-blue-800">熱量 (kcal)</p>
+                        <div class="progress-bar-container my-2">
+                            <div id="calories-progress" class="progress-bar"></div>
+                        </div>
+                        <div class="flex justify-between items-baseline">
+                            <p class="text-lg font-bold text-blue-900"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p>
+                            <p id="calories-remaining" class="text-sm font-semibold text-gray-600"></p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="p-2 rounded-lg bg-gray-50">
+                            <p class="text-xs font-medium text-gray-700">飲水 (c.c.)</p>
+                            <div class="progress-bar-container my-1">
+                                <div id="water-progress" class="progress-bar"></div>
+                            </div>
+                            <p class="text-sm font-bold text-gray-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p>
+                        </div>
+                        <div class="p-2 rounded-lg bg-gray-50">
+                            <p class="text-xs font-medium text-gray-700">運動 (kcal)</p>
+                            <div class="progress-bar-container my-1">
+                                <div id="exercise-progress" class="progress-bar"></div>
+                            </div>
+                            <p class="text-sm font-bold text-gray-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p>
+                        </div>
+                        <div class="p-2 rounded-lg bg-gray-50">
+                            <p class="text-xs font-medium text-gray-700">燃脂膠囊 (包)</p>
+                            <div class="progress-bar-container my-1">
+                                <div id="capsule-progress" class="progress-bar"></div>
+                            </div>
+                            <p class="text-sm font-bold text-gray-800"><span data-value="capsule-today">0</span> / <span data-value="capsule-goal">...</span></p>
+                        </div>
                     </div>
                 </div>
+
                 <div class="bg-white p-3 rounded-lg shadow-sm">
                     <div class="flex items-center justify-between mb-2">
                         <button id="prev-month-btn" class="p-1">&lt;</button>
@@ -149,45 +208,51 @@
                     <div><label class="block text-sm font-medium text-gray-700">飲料</label><div class="flex gap-2"><textarea data-field="drinks_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="drinks_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
                     
                     <div><label class="text-lg font-bold text-gray-800 pt-4">身體數據</label></div>
-                    <div><label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label><input data-field="water_cc" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input data-field="water_cc" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md">
+                            <button class="quick-add-btn" data-amount="250">+250cc</button>
+                            <button class="quick-add-btn" data-amount="500">+500cc</button>
+                        </div>
+                    </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日運動</label>
                         <div class="flex gap-2">
-                             <input data-field="exercise_text" type="text" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
-                             <input data-field="exercise_kcal" type="number" class="log-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
+                             <input data-field="exercise_text" type="text" class="log-input tall-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
+                             <input data-field="exercise_kcal" type="number" class="log-input tall-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
                         </div>
                     </div>
-                     <div><label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label><input data-field="daily_weight" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
+                     <div><label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label><input data-field="daily_weight" type="number" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md"></div>
                     <div>
                          <label class="block text-sm font-medium text-gray-700">今日使用燃脂膠囊 (包)</label>
-                         <input data-field="capsule_qty" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md" placeholder="請輸入包數">
-                         <p class="text-xs text-gray-500 mt-1">您的每日目標是 <span id="log-target-capsule" class="font-bold">...</span> 包。</p>
+                         <input data-field="capsule_qty" type="number" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md" placeholder="請輸入包數">
                     </div>
                 </div>
             </div>
 
             <div id="trends-tab" class="hidden space-y-4">
                  <div class="bg-white p-4 rounded-lg shadow">
-                    <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
-                        <button onclick="updateChartRange('7days')" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                        <button onclick="updateChartRange('28days')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">28天課程</button>
-                        <button onclick="updateChartRange('this_month')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">本月</button>
-                        <div class="flex items-center gap-1">
-                            <label for="start-date-picker" class="text-xs">自訂開始日:</label>
-                            <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                        </div>
-                    </div>
-                    <canvas id="trendsChart"></canvas>
-                    <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
-                        <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
-                        <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2"> 飲水</label>
-                        <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3"> 運動消耗</label>
-                    </div>
+                     <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
+                         <button onclick="updateChartRange('7days')" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                         <button onclick="updateChartRange('28days')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">28天課程</button>
+                         <button onclick="updateChartRange('this_month')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">本月</button>
+                         <div class="flex items-center gap-1">
+                             <label for="start-date-picker" class="text-xs">自訂開始日:</label>
+                             <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                         </div>
+                     </div>
+                     <canvas id="trendsChart"></canvas>
+                     <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
+                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
+                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2"> 飲水</label>
+                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3"> 運動消耗</label>
+                     </div>
                  </div>
             </div>
         </div>
     </div>
-   
+    
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         // --- 1. 全域變數與狀態管理 ---
@@ -218,7 +283,9 @@
                 console.error("API Error Response:", errorData);
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
-            return response.json();
+            // 修正：檢查回應是否為空，因為某些成功回應可能沒有 body
+            const text = await response.text();
+            return text ? JSON.parse(text) : {};
         }
 
         // --- 3. 核心功能函式 ---
@@ -276,7 +343,6 @@
                 }
             } catch (error) {
                 console.error("讀取個人檔案失敗:", error);
-                // 如果是權限問題，main 函式已經處理，此處不用跳 alert
             }
         }
         
@@ -350,13 +416,13 @@
                 btn.classList.add('bg-gray-200');
             });
              if (event && event.currentTarget.tagName === 'BUTTON') {
-                event.currentTarget.classList.add('active', 'bg-emerald-500', 'text-white');
-                event.currentTarget.classList.remove('bg-gray-200');
-                document.getElementById('start-date-picker').value = '';
-            }
+                 event.currentTarget.classList.add('active', 'bg-emerald-500', 'text-white');
+                 event.currentTarget.classList.remove('bg-gray-200');
+                 document.getElementById('start-date-picker').value = '';
+             }
             await renderChart(range);
         }
-       
+        
         function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
 
         function switchTab(tabName) {
@@ -395,10 +461,7 @@
             const age = parseFloat(document.getElementById('age').value);
             const gender = document.getElementById('gender').value;
             const activityLevel = parseFloat(document.getElementById('activity-level').value);
-           
-            const targetCalories = document.getElementById('target-calories').value;
-            document.querySelector('[data-value="calories-goal"]').textContent = targetCalories || '...';
-           
+            
             if (height > 0 && weight > 0 && age > 0) {
                 let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
                 bmr = Math.round(bmr);
@@ -411,6 +474,8 @@
                 document.getElementById('tdee-display').textContent = '---';
                 updateGoalOptions(null);
             }
+            // 觸發儀表板更新以顯示目標
+            updateGoalDashboard();
         }
 
         function updateGoalOptions(tdee) {
@@ -437,23 +502,85 @@
             const finalKcal = selectedButton.dataset.finalKcal;
             if (finalKcal) {
                 document.getElementById('target-calories').value = finalKcal;
-                document.querySelector('[data-value="calories-goal"]').textContent = finalKcal;
+                updateGoalDashboard();
             }
         }
-       
+        
         function updateGoalDashboard() {
-            let totalKcal = 0;
-            document.querySelectorAll('.calorie-input, [data-field="drinks_kcal"]').forEach(input => { totalKcal += parseFloat(input.value) || 0; });
-            document.querySelector('[data-value="calories-today"]').textContent = totalKcal;
-            document.querySelector('[data-value="calories-goal"]').textContent = userProfileData.target_calories || '...';
-           
-            document.querySelector('[data-value="water-today"]').textContent = document.querySelector('[data-field="water_cc"]').value || 0;
-            document.querySelector('[data-value="water-goal"]').textContent = userProfileData.water_goal || '...';
-           
-            document.querySelector('[data-value="exercise-today"]').textContent = document.querySelector('[data-field="exercise_kcal"]').value || 0;
-            document.querySelector('[data-value="exercise-goal"]').textContent = userProfileData.exercise_goal || '...';
+            // 從個人檔案獲取目標值
+            const goalCalories = parseInt(userProfileData.target_calories) || 0;
+            const goalWater = parseInt(userProfileData.water_goal) || 0;
+            const goalExercise = parseInt(userProfileData.exercise_goal) || 0;
+            const goalCapsule = parseInt(userProfileData.capsule_goal) || 0;
 
-            document.getElementById('log-target-capsule').textContent = userProfileData.capsule_goal || '...';
+            // 從日誌輸入獲取當前值
+            let todayCalories = 0;
+            document.querySelectorAll('.calorie-input, [data-field="drinks_kcal"]').forEach(input => { todayCalories += parseInt(input.value) || 0; });
+            const todayWater = parseInt(document.querySelector('[data-field="water_cc"]').value) || 0;
+            const todayExercise = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
+            const todayCapsule = parseInt(document.querySelector('[data-field="capsule_qty"]').value) || 0;
+
+            // 更新儀表板文字
+            document.querySelector('[data-value="calories-today"]').textContent = todayCalories;
+            document.querySelector('[data-value="calories-goal"]').textContent = goalCalories || '...';
+            document.querySelector('[data-value="water-today"]').textContent = todayWater;
+            document.querySelector('[data-value="water-goal"]').textContent = goalWater || '...';
+            document.querySelector('[data-value="exercise-today"]').textContent = todayExercise;
+            document.querySelector('[data-value="exercise-goal"]').textContent = goalExercise || '...';
+            document.querySelector('[data-value="capsule-today"]').textContent = todayCapsule;
+            document.querySelector('[data-value="capsule-goal"]').textContent = goalCapsule || '...';
+            
+            // 更新進度條
+            const updateProgressBar = (elementId, today, goal, isPositiveGoal = true) => {
+                const progressBar = document.getElementById(elementId);
+                if (!progressBar) return;
+
+                let percentage = goal > 0 ? (today / goal) * 100 : 0;
+                percentage = Math.min(percentage, 100); // 進度條最高 100%
+
+                progressBar.style.width = `${percentage}%`;
+                
+                progressBar.classList.remove('progress-bar-green', 'progress-bar-yellow', 'progress-bar-red');
+
+                if (isPositiveGoal) {
+                    if (percentage >= 100) {
+                        progressBar.classList.add('progress-bar-green');
+                    } else {
+                        progressBar.classList.add('progress-bar-yellow'); // 預設為黃色
+                    }
+                } else { // 熱量這種負向指標
+                    if (today > goal && goal > 0) {
+                        progressBar.classList.add('progress-bar-red');
+                    } else if (today / goal >= 0.7) {
+                        progressBar.classList.add('progress-bar-yellow');
+                    } else {
+                        progressBar.classList.add('progress-bar-green');
+                    }
+                }
+            };
+
+            updateProgressBar('calories-progress', todayCalories, goalCalories, false);
+            updateProgressBar('water-progress', todayWater, goalWater, true);
+            updateProgressBar('exercise-progress', todayExercise, goalExercise, true);
+            updateProgressBar('capsule-progress', todayCapsule, goalCapsule, true);
+
+            // 更新剩餘熱量
+            const remainingEl = document.getElementById('calories-remaining');
+            if (goalCalories > 0) {
+                const exerciseBurn = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
+                const remaining = goalCalories - todayCalories + exerciseBurn;
+                if (remaining >= 0) {
+                    remainingEl.textContent = `還可攝取: ${remaining} kcal`;
+                    remainingEl.classList.remove('text-red-500');
+                    remainingEl.classList.add('text-gray-600');
+                } else {
+                    remainingEl.textContent = `已超標: ${-remaining} kcal`;
+                    remainingEl.classList.add('text-red-500');
+                    remainingEl.classList.remove('text-gray-600');
+                }
+            } else {
+                remainingEl.textContent = '';
+            }
         }
 
         async function renderCalendar(year, month) {
@@ -461,7 +588,7 @@
             const calendarDays = document.getElementById('calendar-days');
             calendarMonthYear.textContent = `${year}年 ${month + 1}月`;
             calendarDays.innerHTML = '';
-           
+            
             try {
                 const daysWithLogs = await fetchAPI(`/api/completion_dots?userId=${userToLoad}&year=${year}&month=${month + 1}`);
                 const firstDayOfMonth = new Date(year, month, 1).getDay();
@@ -491,7 +618,7 @@
                 }
             } catch(e) { console.error("渲染日曆失敗", e) }
         }
-       
+        
         async function renderChart(range = '7days') {
             try {
                 const chartData = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
@@ -536,8 +663,20 @@
             document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value));
             document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
             document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
+            
+            // 快速新增飲水按鈕事件
+            document.querySelectorAll('.quick-add-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const waterInput = document.querySelector('[data-field="water_cc"]');
+                    const currentWater = parseInt(waterInput.value) || 0;
+                    const amountToAdd = parseInt(btn.dataset.amount);
+                    waterInput.value = currentWater + amountToAdd;
+                    // 手動觸發 input 事件，以便觸發自動儲存和儀表板更新
+                    waterInput.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            });
         }
-       
+        
         async function main() {
             try {
                 await liff.init({ liffId });
@@ -562,20 +701,42 @@
                     userProfileData.displayName = profile.displayName;
                 }
 
-                // **【關鍵修正】** 只有在非管理員模式下才檢查權限
                 if (!isViewingAsAdmin) {
                     const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
                     if (!statusRes.isActive) {
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('access-denied').classList.remove('hidden');
-                        return; // 中斷後續執行
+                        return;
                     }
                 }
 
                 await loadProfileData();
                 
+                // 自動同步名稱邏輯
+                if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
+                    console.log('偵測到首次登入或名稱未同步，自動更新名稱...');
+                    try {
+                        await fetchAPI(`/api/profile?userId=${userToLoad}`, {
+                            method: 'POST',
+                            body: JSON.stringify({ 
+                                data: { displayName: profile.displayName } 
+                            })
+                        });
+                        userProfileData.display_name = profile.displayName;
+                        console.log('名稱自動同步成功！');
+                    } catch (error) {
+                        console.error('名稱自動同步失敗:', error);
+                    }
+                }
+
                 if(isViewingAsAdmin) {
                      document.getElementById('target-user-display-name').textContent = userProfileData.admin_nickname || userProfileData.display_name || '該用戶';
+                     const adminNotesContent = document.getElementById('admin-notes-content');
+                     const adminNotesDisplay = document.getElementById('admin-notes-display');
+                     if(userProfileData.admin_notes) {
+                        adminNotesContent.textContent = userProfileData.admin_notes;
+                        adminNotesDisplay.classList.remove('hidden');
+                     }
                 }
 
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
@@ -598,4 +759,3 @@
     </script>
 </body>
 </html>
-
