@@ -42,7 +42,7 @@
     </div>
 
     <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
-        
+       
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
             <nav class="flex justify-center -mb-px space-x-6" aria-label="Tabs">
                 <button onclick="switchTab('profile')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">個人檔案</button>
@@ -53,6 +53,10 @@
 
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
+                <div id="admin-info-box" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2" role="alert">
+                  <p class="text-xs">管理員模式: <span id="admin-user-id-display" class="font-mono"></span></p>
+                </div>
+
                 <div class="flex justify-between items-center"><p id="last-updated" class="text-xs text-gray-400"></p></div>
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -92,14 +96,14 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標 (kcal)</label>
                      <div class="p-2 bg-gray-100 rounded-md mt-1">
-                        <p class="text-xs text-gray-600 mb-2">智慧估算器 (參考用):</p>
-                        <div class="flex items-center gap-2 text-sm">
-                           <select id="ex-type" class="block w-full border-gray-300 rounded-md py-1"><option value="3.5">快走</option><option value="7">慢跑</option><option value="2.5">瑜珈</option></select>
-                           <input type="number" id="ex-duration" class="block w-1/2 border-gray-300 rounded-md py-1" value="30">
-                           <span>分鐘</span>
-                           <p class="w-full text-right">≈ <span id="ex-estimate" class="font-bold">---</span> kcal</p>
-                        </div>
-                    </div>
+                         <p class="text-xs text-gray-600 mb-2">智慧估算器 (參考用):</p>
+                         <div class="flex items-center gap-2 text-sm">
+                            <select id="ex-type" class="block w-full border-gray-300 rounded-md py-1"><option value="3.5">快走</option><option value="7">慢跑</option><option value="2.5">瑜珈</option></select>
+                            <input type="number" id="ex-duration" class="block w-1/2 border-gray-300 rounded-md py-1" value="30">
+                            <span>分鐘</span>
+                            <p class="w-full text-right">≈ <span id="ex-estimate" class="font-bold">---</span> kcal</p>
+                         </div>
+                     </div>
                     <input type="number" id="exercise-goal" class="profile-input mt-2 block w-full border border-gray-300 rounded-md py-2 px-3" placeholder="請在此輸入您的每日目標">
                 </div>
                 <div>
@@ -116,10 +120,10 @@
             <div id="log-tab" class="hidden space-y-4">
                 <div id="goal-dashboard" class="bg-blue-50 p-3 rounded-lg text-center space-y-2">
                      <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
-                        <div><p>熱量 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p></div>
-                        <div><p>飲水 (c.c.)</p><p class="font-bold text-sm text-blue-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p></div>
-                        <div><p>運動 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p></div>
-                    </div>
+                         <div><p>熱量 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p></div>
+                         <div><p>飲水 (c.c.)</p><p class="font-bold text-sm text-blue-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p></div>
+                         <div><p>運動 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p></div>
+                     </div>
                 </div>
                 <div class="bg-white p-3 rounded-lg shadow-sm">
                     <div class="flex items-center justify-between mb-2">
@@ -135,17 +139,18 @@
                     <div><label class="block text-sm font-medium text-gray-700">早餐</label><div class="flex gap-2"><textarea data-field="breakfast_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="breakfast_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
                     <div><label class="block text-sm font-medium text-gray-700">午餐</label><div class="flex gap-2"><textarea data-field="lunch_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="lunch_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
                     <div><label class="block text-sm font-medium text-gray-700">晚餐</label><div class="flex gap-2"><textarea data-field="dinner_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="dinner_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
-                    <div><label class="block text-sm font-medium text-gray-700">點心</label><div class="flex gap-2"><textarea data-field="snacks_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="snacks_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
+                    <div><label class="block text-sm font-medium text-gray-700">點心/其他</label><div class="flex gap-2"><textarea data-field="snacks_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="snacks_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
                     <div><label class="block text-sm font-medium text-gray-700">飲料</label><div class="flex gap-2"><textarea data-field="drinks_text" rows="2" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md"></textarea><input data-field="drinks_kcal" type="number" class="log-input calorie-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="kcal"></div></div>
+                    
                     <div><label class="text-lg font-bold text-gray-800 pt-4">身體數據</label></div>
                     <div><label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label><input data-field="water_cc" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日運動</label>
                         <button id="show-exercise-modal" class="text-xs text-emerald-600 hover:underline">熱量消耗參考</button>
                          <div class="flex gap-2">
-                            <input data-field="exercise_text" type="text" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
-                            <input data-field="exercise_kcal" type="number" class="log-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
-                        </div>
+                             <input data-field="exercise_text" type="text" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
+                             <input data-field="exercise_kcal" type="number" class="log-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
+                         </div>
                     </div>
                      <div><label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label><input data-field="daily_weight" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
                     <div>
@@ -177,7 +182,7 @@
             </div>
         </div>
     </div>
-    
+   
     <div id="exercise-modal" class="modal">
         <div class="modal-content">
             <span id="close-exercise-modal" class="close-btn">&times;</span>
@@ -217,7 +222,7 @@
             currentDate.setMonth(currentDate.getMonth() + 1);
             await loadLogDataForDate(currentDate);
         }
-        
+       
         async function updateChartRange(range) {
             document.querySelectorAll('.range-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-emerald-500', 'text-white');
@@ -230,7 +235,7 @@
             }
             await renderChart(range);
         }
-        
+       
         function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
 
         function switchTab(tabName) {
@@ -260,6 +265,7 @@
         async function saveProfileData() {
             if (!currentUserId) return alert("無法取得使用者ID，請重新進入頁面。");
             const profileData = {
+                displayName: userProfileData.displayName, // 把從 liff getProfile() 來的名字一起存起來
                 height: document.getElementById('height').value,
                 weight: document.getElementById('profile-weight').value,
                 age: document.getElementById('age').value,
@@ -293,7 +299,7 @@
                 if (!response.ok) throw new Error('讀取失敗');
                 const data = await response.json();
                 userProfileData = data || {};
-                
+               
                 if (data && Object.keys(data).length > 0) {
                     document.getElementById('height').value = data.height || '';
                     document.getElementById('profile-weight').value = data.profile_weight || '';
@@ -306,7 +312,7 @@
                     document.getElementById('personal-notes').value = data.personal_notes || '';
                     document.getElementById('last-updated').textContent = data.last_updated ? `上次更新: ${data.last_updated}` : '';
                 }
-                
+               
                 updateProfileCalculations();
 
                 document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
@@ -337,7 +343,10 @@
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/log`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Operator-User-Id': currentUserId // 每次操作都帶上自己的ID
+                        },
                         body: JSON.stringify({ userId: currentUserId, date: formatDate(currentDate), data: logData })
                     });
                     if(response.ok) {
@@ -396,10 +405,10 @@
             const age = parseFloat(document.getElementById('age').value);
             const gender = document.getElementById('gender').value;
             const activityLevel = parseFloat(document.getElementById('activity-level').value);
-            
+           
             const targetCalories = document.getElementById('target-calories').value;
             document.querySelector('[data-value="calories-goal"]').textContent = targetCalories || '...';
-            
+           
             if (height > 0 && weight > 0 && age > 0) {
                 let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
                 bmr = Math.round(bmr);
@@ -441,16 +450,16 @@
                 document.querySelector('[data-value="calories-goal"]').textContent = finalKcal;
             }
         }
-        
+       
         function updateGoalDashboard() {
             let totalKcal = 0;
             document.querySelectorAll('.calorie-input, [data-field="drinks_kcal"]').forEach(input => { totalKcal += parseFloat(input.value) || 0; });
             document.querySelector('[data-value="calories-today"]').textContent = totalKcal;
             document.querySelector('[data-value="calories-goal"]').textContent = userProfileData.target_calories || '...';
-            
+           
             document.querySelector('[data-value="water-today"]').textContent = document.querySelector('[data-field="water_cc"]').value || 0;
             document.querySelector('[data-value="water-goal"]').textContent = userProfileData.water_goal || '...';
-            
+           
             document.querySelector('[data-value="exercise-today"]').textContent = document.querySelector('[data-field="exercise_kcal"]').value || 0;
             document.querySelector('[data-value="exercise-goal"]').textContent = userProfileData.exercise_goal || '...';
 
@@ -462,7 +471,7 @@
             const calendarDays = document.getElementById('calendar-days');
             calendarMonthYear.textContent = `${year}年 ${month + 1}月`;
             calendarDays.innerHTML = '';
-            
+           
             const response = await fetch(`${API_BASE_URL}/api/completion_dots?userId=${currentUserId}&year=${year}&month=${month + 1}`);
             const daysWithLogs = await response.json();
 
@@ -471,7 +480,7 @@
             const today = new Date();
 
             for (let i = 0; i < firstDayOfMonth; i++) calendarDays.insertAdjacentHTML('beforeend', '<div></div>');
-            
+           
             for (let day = 1; day <= daysInMonth; day++) {
                 const dayEl = document.createElement('div');
                 dayEl.textContent = day;
@@ -480,7 +489,7 @@
                 if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) dayEl.classList.add('today');
                 if (year === currentDate.getFullYear() && month === currentDate.getMonth() && day === currentDate.getDate()) dayEl.classList.add('selected');
                 if (daysWithLogs.includes(day)) dayEl.classList.add('completed');
-                
+               
                 dayEl.insertAdjacentHTML('beforeend', '<div class="completion-dot"></div>');
 
                 dayEl.addEventListener('click', async () => {
@@ -491,7 +500,7 @@
                 calendarDays.appendChild(dayEl);
             }
         }
-        
+       
         async function renderChart(range = '7days') {
             const chartData = await loadChartData(range);
             const ctx = document.getElementById('trendsChart').getContext('2d');
@@ -538,7 +547,7 @@
             document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
             document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
         }
-        
+       
         async function main() {
              try {
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
@@ -548,19 +557,28 @@
                 if (!liff.isLoggedIn()) { liff.login(); return; }
                 const profile = await liff.getProfile();
                 currentUserId = profile.userId;
+                userProfileData.displayName = profile.displayName; // 將 LINE 的名字暫存起來
+
+                // 檢查是否為管理員
+                const adminCheckResponse = await fetch(`${API_BASE_URL}/api/admin/check?userId=${currentUserId}`);
+                const { isAdmin } = await adminCheckResponse.json();
+                if (isAdmin) {
+                    document.getElementById('admin-user-id-display').textContent = currentUserId;
+                    document.getElementById('admin-info-box').classList.remove('hidden');
+                }
 
                 await loadProfileData();
                 await loadLogDataForDate(currentDate);
                 await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
-                
+               
                 setupEventListeners();
-            } catch (error) {
+             } catch (error) {
                 console.error("初始化失敗", error);
                 alert("系統初始化失敗，請稍後再試。");
-            } finally {
+             } finally {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('app').classList.remove('hidden');
-            }
+             }
         }
 
         // --- 5. 執行主程式 ---
@@ -568,4 +586,3 @@
     </script>
 </body>
 </html>
-我沒看到你說的點點，也沒有日期切換，然後點心要改成點心/其他，飲料要新增在點心/其他
