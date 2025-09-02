@@ -37,12 +37,22 @@
     <div id="loading" class="flex justify-center items-center h-screen">
         <div class="text-center">
             <svg class="animate-spin h-8 w-8 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            <p class="text-gray-500 mt-2">正在載入資料...</p>
+            <p id="loading-text" class="text-gray-500 mt-2">正在載入資料...</p>
         </div>
+    </div>
+
+    <div id="access-denied" class="hidden flex flex-col justify-center items-center h-screen text-center p-4">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">服務已到期 😢</h2>
+        <p class="text-gray-600">感謝您這段時間的努力！<br>若需繼續使用，請洽詢您的營養師。</p>
     </div>
 
     <div id="app" class="hidden max-w-lg mx-auto p-4 space-y-6">
        
+        <div id="admin-view-banner" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-3 rounded-md" role="alert">
+          <p class="font-bold">管理員模式</p>
+          <p class="text-sm">您正在檢視 <span id="target-user-display-name" class="font-semibold"></span> 的資料。</p>
+        </div>
+        
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
             <nav class="flex justify-center -mb-px space-x-6" aria-label="Tabs">
                 <button onclick="switchTab('profile')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">個人檔案</button>
@@ -53,10 +63,6 @@
 
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
-                <div id="admin-info-box" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2" role="alert">
-                  <p class="text-xs">管理員模式: <span id="admin-user-id-display" class="font-mono"></span></p>
-                </div>
-
                 <div class="flex justify-between items-center"><p id="last-updated" class="text-xs text-gray-400"></p></div>
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -88,22 +94,22 @@
                     </div>
                     <input type="hidden" id="target-calories">
                 </div>
-                 <div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700">設定每日飲水目標 (c.c.)</label>
                     <p id="water-suggestion" class="text-xs text-gray-500 mb-1"></p>
                     <input type="number" id="water-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標 (kcal)</label>
-                     <div class="p-2 bg-gray-100 rounded-md mt-1">
-                         <p class="text-xs text-gray-600 mb-2">智慧估算器 (參考用):</p>
-                         <div class="flex items-center gap-2 text-sm">
+                    <div class="p-2 bg-gray-100 rounded-md mt-1">
+                        <p class="text-xs text-gray-600 mb-2">智慧估算器 (參考用):</p>
+                        <div class="flex items-center gap-2 text-sm">
                             <select id="ex-type" class="block w-full border-gray-300 rounded-md py-1"><option value="3.5">快走</option><option value="7">慢跑</option><option value="2.5">瑜珈</option></select>
                             <input type="number" id="ex-duration" class="block w-1/2 border-gray-300 rounded-md py-1" value="30">
                             <span>分鐘</span>
                             <p class="w-full text-right">≈ <span id="ex-estimate" class="font-bold">---</span> kcal</p>
-                         </div>
-                     </div>
+                        </div>
+                    </div>
                     <input type="number" id="exercise-goal" class="profile-input mt-2 block w-full border border-gray-300 rounded-md py-2 px-3" placeholder="請在此輸入您的每日目標">
                 </div>
                 <div>
@@ -119,11 +125,11 @@
 
             <div id="log-tab" class="hidden space-y-4">
                 <div id="goal-dashboard" class="bg-blue-50 p-3 rounded-lg text-center space-y-2">
-                     <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
-                         <div><p>熱量 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p></div>
-                         <div><p>飲水 (c.c.)</p><p class="font-bold text-sm text-blue-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p></div>
-                         <div><p>運動 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p></div>
-                     </div>
+                    <div class="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                        <div><p>熱量 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="calories-today">0</span> / <span data-value="calories-goal">...</span></p></div>
+                        <div><p>飲水 (c.c.)</p><p class="font-bold text-sm text-blue-800"><span data-value="water-today">0</span> / <span data-value="water-goal">...</span></p></div>
+                        <div><p>運動 (kcal)</p><p class="font-bold text-sm text-blue-800"><span data-value="exercise-today">0</span> / <span data-value="exercise-goal">...</span></p></div>
+                    </div>
                 </div>
                 <div class="bg-white p-3 rounded-lg shadow-sm">
                     <div class="flex items-center justify-between mb-2">
@@ -146,11 +152,10 @@
                     <div><label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label><input data-field="water_cc" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日運動</label>
-                        <button id="show-exercise-modal" class="text-xs text-emerald-600 hover:underline">熱量消耗參考</button>
-                         <div class="flex gap-2">
+                        <div class="flex gap-2">
                              <input data-field="exercise_text" type="text" class="log-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
                              <input data-field="exercise_kcal" type="number" class="log-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
-                         </div>
+                        </div>
                     </div>
                      <div><label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label><input data-field="daily_weight" type="number" class="log-input mt-1 block w-full border-gray-300 rounded-md"></div>
                     <div>
@@ -174,7 +179,7 @@
                     </div>
                     <canvas id="trendsChart"></canvas>
                     <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
-                        <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1"> 熱量攝取</label>
+                        <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2"> 飲水</label>
                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3"> 運動消耗</label>
                     </div>
@@ -183,31 +188,145 @@
         </div>
     </div>
    
-    <div id="exercise-modal" class="modal">
-        <div class="modal-content">
-            <span id="close-exercise-modal" class="close-btn">&times;</span>
-            <h3 class="font-bold text-lg mb-4">常見運動熱量消耗參考</h3>
-            <p class="text-sm text-gray-600 mb-2">(以 60 公斤成人估算)</p>
-            <ul class="list-disc list-inside text-sm space-y-1">
-                <li>快走 (30分鐘): ≈ 105 kcal</li>
-                <li>慢跑 (30分鐘): ≈ 210 kcal</li>
-                <li>瑜珈 (30分鐘): ≈ 75 kcal</li>
-            </ul>
-        </div>
-    </div>
-
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         // --- 1. 全域變數與狀態管理 ---
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
         let liffId = "2008021259-NLyg2AWl"; 
-        let currentUserId = null, trendsChart = null, autosaveTimer = null;
-        let currentDate = new Date();
+        
+        let userToLoad = null;      // 要載入資料的目標 User ID
+        let operatorId = null;      // 實際操作者的 User ID
+        let isViewingAsAdmin = false; // 是否為管理員視角
         let userProfileData = {};
-
-        // --- 2. 事件處理與輔助函式 ---
+        
+        let currentDate = new Date();
+        let autosaveTimer = null;
+        let trendsChart = null;
+        
+        // --- 2. 輔助函式 ---
         const formatDate = (date) => new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
+        async function fetchAPI(endpoint, options = {}) {
+            const defaultHeaders = {
+                'Content-Type': 'application/json',
+                'X-Operator-User-Id': operatorId
+            };
+            options.headers = { ...defaultHeaders, ...options.headers };
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("API Error Response:", errorData);
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        }
 
+        // --- 3. 核心功能函式 ---
+        async function saveProfileData() {
+            if (!userToLoad) return;
+            const profileData = {
+                displayName: userProfileData.displayName,
+                height: document.getElementById('height').value,
+                weight: document.getElementById('profile-weight').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                activityLevel: document.getElementById('activity-level').value,
+                targetCalories: document.getElementById('target-calories').value,
+                waterGoal: document.getElementById('water-goal').value,
+                exerciseGoal: document.getElementById('exercise-goal').value,
+                capsuleGoal: document.getElementById('capsule-goal').value,
+                personalNotes: document.getElementById('personal-notes').value,
+            };
+            try {
+                await fetchAPI(`/api/profile?userId=${userToLoad}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ data: profileData })
+                });
+                alert("個人設定已儲存！");
+                await loadProfileData();
+            } catch (error) {
+                console.error("儲存個人檔案失敗:", error);
+                alert(`儲存失敗: ${error.message}`);
+            }
+        }
+
+        async function loadProfileData() {
+            if (!userToLoad) return;
+            try {
+                const data = await fetchAPI(`/api/profile?userId=${userToLoad}`);
+                userProfileData = { ...userProfileData, ...data };
+                
+                document.getElementById('height').value = userProfileData.height || '';
+                document.getElementById('profile-weight').value = userProfileData.profile_weight || '';
+                document.getElementById('age').value = userProfileData.age || '';
+                document.getElementById('gender').value = userProfileData.gender || 'male';
+                document.getElementById('activity-level').value = userProfileData.activity_level || 1.55;
+                document.getElementById('water-goal').value = userProfileData.water_goal || '';
+                document.getElementById('exercise-goal').value = userProfileData.exercise_goal || '';
+                document.getElementById('capsule-goal').value = userProfileData.capsule_goal || '';
+                document.getElementById('personal-notes').value = userProfileData.personal_notes || '';
+                document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${userProfileData.last_updated}` : '';
+
+                updateProfileCalculations();
+
+                document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
+                if (userProfileData.target_calories) {
+                    const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => btn.dataset.finalKcal == userProfileData.target_calories);
+                    if (selectedBtn) selectedBtn.classList.add('selected');
+                }
+            } catch (error) {
+                console.error("讀取個人檔案失敗:", error);
+                // 如果是權限問題，main 函式已經處理，此處不用跳 alert
+            }
+        }
+        
+        function triggerAutosave() {
+            clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(async () => {
+                if (!userToLoad) return;
+                const logData = {};
+                document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => {
+                    const key = el.dataset.field;
+                    const value = el.value === '' ? null : el.value;
+                    logData[key] = value;
+                });
+                try {
+                    await fetchAPI(`/api/log`, {
+                        method: 'POST',
+                        body: JSON.stringify({ 
+                            userId: operatorId, 
+                            targetUserId: userToLoad,
+                            date: formatDate(currentDate), 
+                            data: logData 
+                        })
+                    });
+                    const dayEl = document.querySelector(`.calendar-day[data-day='${currentDate.getDate()}']`);
+                    if(dayEl) dayEl.classList.add('completed');
+                } catch (error) {
+                    console.error(`自動儲存 ${formatDate(currentDate)} 的資料失敗:`, error);
+                }
+            }, 1500);
+        }
+
+        async function loadLogDataForDate(date) {
+            document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => { el.value = ''; });
+            if (!userToLoad) return;
+            try {
+                const data = await fetchAPI(`/api/log?userId=${userToLoad}&date=${formatDate(date)}`);
+                if (data) {
+                    Object.keys(data).forEach(key => {
+                        const el = document.querySelector(`#daily-log-inputs [data-field="${key}"]`);
+                        if (el) el.value = data[key] || '';
+                    });
+                }
+            } catch (error) {
+                console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
+            } finally {
+                updateGoalDashboard();
+            }
+        }
+        
+        // --- 4. UI 更新與事件處理函式 ---
         function handleLogInputChange() {
             updateGoalDashboard();
             triggerAutosave();
@@ -215,14 +334,16 @@
 
         async function showPrevMonth() {
             currentDate.setMonth(currentDate.getMonth() - 1);
+            await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
             await loadLogDataForDate(currentDate);
         }
 
         async function showNextMonth() {
             currentDate.setMonth(currentDate.getMonth() + 1);
+            await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
             await loadLogDataForDate(currentDate);
         }
-       
+        
         async function updateChartRange(range) {
             document.querySelectorAll('.range-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-emerald-500', 'text-white');
@@ -258,137 +379,6 @@
                 document.getElementById('ex-estimate').textContent = calories;
             } else {
                 document.getElementById('ex-estimate').textContent = '---';
-            }
-        }
-
-        // --- 3. 主要功能函式 ---
-        async function saveProfileData() {
-            if (!currentUserId) return alert("無法取得使用者ID，請重新進入頁面。");
-            const profileData = {
-                displayName: userProfileData.displayName, // 把從 liff getProfile() 來的名字一起存起來
-                height: document.getElementById('height').value,
-                weight: document.getElementById('profile-weight').value,
-                age: document.getElementById('age').value,
-                gender: document.getElementById('gender').value,
-                activityLevel: document.getElementById('activity-level').value,
-                targetCalories: document.getElementById('target-calories').value,
-                waterGoal: document.getElementById('water-goal').value,
-                exerciseGoal: document.getElementById('exercise-goal').value,
-                capsuleGoal: document.getElementById('capsule-goal').value,
-                personalNotes: document.getElementById('personal-notes').value,
-            };
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/profile?userId=${currentUserId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: profileData })
-                });
-                if (!response.ok) throw new Error(`儲存失敗: ${response.statusText}`);
-                alert("個人設定已儲存！");
-                await loadProfileData();
-            } catch (error) {
-                console.error("儲存個人檔案失敗:", error);
-                alert("儲存個人檔案失敗，請檢查網路連線。");
-            }
-        }
-
-        async function loadProfileData() {
-            if (!currentUserId) return;
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/profile?userId=${currentUserId}`);
-                if (!response.ok) throw new Error('讀取失敗');
-                const data = await response.json();
-                userProfileData = data || {};
-               
-                if (data && Object.keys(data).length > 0) {
-                    document.getElementById('height').value = data.height || '';
-                    document.getElementById('profile-weight').value = data.profile_weight || '';
-                    document.getElementById('age').value = data.age || '';
-                    document.getElementById('gender').value = data.gender || 'male';
-                    document.getElementById('activity-level').value = data.activity_level || 1.55;
-                    document.getElementById('water-goal').value = data.water_goal || '';
-                    document.getElementById('exercise-goal').value = data.exercise_goal || '';
-                    document.getElementById('capsule-goal').value = data.capsule_goal || '';
-                    document.getElementById('personal-notes').value = data.personal_notes || '';
-                    document.getElementById('last-updated').textContent = data.last_updated ? `上次更新: ${data.last_updated}` : '';
-                }
-               
-                updateProfileCalculations();
-
-                document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
-                const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => btn.dataset.finalKcal == userProfileData.target_calories);
-                if (selectedBtn) {
-                    selectedBtn.classList.add('selected');
-                } else if (document.querySelector('[data-goal-type="mild_loss"]').dataset.finalKcal > 0) {
-                    const mildLossBtn = document.querySelector('[data-goal-type="mild_loss"]');
-                    mildLossBtn.classList.add('selected');
-                    selectGoal({currentTarget: mildLossBtn});
-                }
-                updateGoalDashboard();
-            } catch (error) {
-                console.error("讀取個人檔案失敗:", error);
-            }
-        }
-
-        function triggerAutosave() {
-            clearTimeout(autosaveTimer);
-            autosaveTimer = setTimeout(async () => {
-                if (!currentUserId) return;
-                const logData = {};
-                document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => {
-                    const key = el.dataset.field;
-                    const value = el.type === 'checkbox' ? el.checked : (el.value === '' ? null : el.value);
-                    logData[key] = value;
-                });
-                try {
-                    const response = await fetch(`${API_BASE_URL}/api/log`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Operator-User-Id': currentUserId // 每次操作都帶上自己的ID
-                        },
-                        body: JSON.stringify({ userId: currentUserId, date: formatDate(currentDate), data: logData })
-                    });
-                    if(response.ok) {
-                        const dayEl = document.querySelector(`.calendar-day[data-day='${currentDate.getDate()}']`);
-                        if(dayEl) dayEl.classList.add('completed');
-                    }
-                } catch (error) {
-                    console.error(`自動儲存 ${formatDate(currentDate)} 的資料失敗:`, error);
-                }
-            }, 1500);
-        }
-
-        async function loadLogDataForDate(date) {
-            document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => { el.value = ''; });
-            updateGoalDashboard();
-            if (!currentUserId) return;
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/log?userId=${currentUserId}&date=${formatDate(date)}`);
-                if (!response.ok) throw new Error('讀取失敗');
-                const data = await response.json();
-                if (data) {
-                    Object.keys(data).forEach(key => {
-                        const el = document.querySelector(`#daily-log-inputs [data-field="${key}"]`);
-                        if (el) el.value = data[key] || '';
-                    });
-                }
-            } catch (error) {
-                console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
-            } finally {
-                updateGoalDashboard();
-            }
-        }
-
-        async function loadChartData(range = '7days') {
-            if (!currentUserId) return { labels: [], datasets: [] };
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/trends?userId=${currentUserId}&range=${range}`);
-                if (!response.ok) throw new Error('讀取失敗');
-                return await response.json();
-            } catch (error) {
-                console.error("讀取圖表資料失敗:", error);
-                return { labels: [], weight: [], calories: [], water: [], exercise: [] };
             }
         }
 
@@ -472,65 +462,68 @@
             calendarMonthYear.textContent = `${year}年 ${month + 1}月`;
             calendarDays.innerHTML = '';
            
-            const response = await fetch(`${API_BASE_URL}/api/completion_dots?userId=${currentUserId}&year=${year}&month=${month + 1}`);
-            const daysWithLogs = await response.json();
+            try {
+                const daysWithLogs = await fetchAPI(`/api/completion_dots?userId=${userToLoad}&year=${year}&month=${month + 1}`);
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const today = new Date();
 
-            const firstDayOfMonth = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const today = new Date();
+                for (let i = 0; i < firstDayOfMonth; i++) calendarDays.insertAdjacentHTML('beforeend', '<div></div>');
+            
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dayEl = document.createElement('div');
+                    dayEl.textContent = day;
+                    dayEl.dataset.day = day;
+                    dayEl.classList.add('calendar-day');
+                    if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) dayEl.classList.add('today');
+                    if (year === currentDate.getFullYear() && month === currentDate.getMonth() && day === currentDate.getDate()) dayEl.classList.add('selected');
+                    if (daysWithLogs.includes(day)) dayEl.classList.add('completed');
+                
+                    dayEl.insertAdjacentHTML('beforeend', '<div class="completion-dot"></div>');
 
-            for (let i = 0; i < firstDayOfMonth; i++) calendarDays.insertAdjacentHTML('beforeend', '<div></div>');
-           
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayEl = document.createElement('div');
-                dayEl.textContent = day;
-                dayEl.dataset.day = day;
-                dayEl.classList.add('calendar-day');
-                if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) dayEl.classList.add('today');
-                if (year === currentDate.getFullYear() && month === currentDate.getMonth() && day === currentDate.getDate()) dayEl.classList.add('selected');
-                if (daysWithLogs.includes(day)) dayEl.classList.add('completed');
-               
-                dayEl.insertAdjacentHTML('beforeend', '<div class="completion-dot"></div>');
-
-                dayEl.addEventListener('click', async () => {
-                    currentDate = new Date(year, month, day);
-                    await loadLogDataForDate(currentDate);
-                    await renderCalendar(year, month);
-                });
-                calendarDays.appendChild(dayEl);
-            }
+                    dayEl.addEventListener('click', async () => {
+                        currentDate = new Date(year, month, day);
+                        await loadLogDataForDate(currentDate);
+                        document.querySelectorAll('.calendar-day.selected').forEach(d => d.classList.remove('selected'));
+                        dayEl.classList.add('selected');
+                    });
+                    calendarDays.appendChild(dayEl);
+                }
+            } catch(e) { console.error("渲染日曆失敗", e) }
         }
        
         async function renderChart(range = '7days') {
-            const chartData = await loadChartData(range);
-            const ctx = document.getElementById('trendsChart').getContext('2d');
-            if (trendsChart) trendsChart.destroy();
+            try {
+                const chartData = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
+                const ctx = document.getElementById('trendsChart').getContext('2d');
+                if (trendsChart) trendsChart.destroy();
 
-            trendsChart = new Chart(ctx, {
-                type: 'line', data: {
-                    labels: chartData.labels,
-                    datasets: [
-                        { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true },
-                        { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: false, yAxisID: 'yKcal' },
-                        { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: true, yAxisID: 'yKcal' },
-                        { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: true, yAxisID: 'yKcal' }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        yWeight: { type: 'linear', position: 'left', title: { display: true, text: '公斤 (kg)' } },
-                        yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.' }, grid: { drawOnChartArea: false } }
+                trendsChart = new Chart(ctx, {
+                    type: 'line', data: {
+                        labels: chartData.labels,
+                        datasets: [
+                            { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true },
+                            { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: false, yAxisID: 'yKcal' },
+                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: true, yAxisID: 'yKcal' },
+                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: true, yAxisID: 'yKcal' }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            yWeight: { type: 'linear', position: 'left', title: { display: true, text: '公斤 (kg)' } },
+                            yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.' }, grid: { drawOnChartArea: false } }
+                        }
                     }
-                }
-            });
-            document.querySelectorAll('.chart-toggle').forEach(el => {
-                trendsChart.setDatasetVisibility(el.dataset.datasetIndex, el.checked);
-            });
-            trendsChart.update();
+                });
+                document.querySelectorAll('.chart-toggle').forEach(el => {
+                    trendsChart.setDatasetVisibility(el.dataset.datasetIndex, el.checked);
+                });
+                trendsChart.update();
+            } catch (e) { console.error("渲染圖表失敗", e) }
         }
 
-        // --- 4. 應用程式啟動流程 ---
+        // --- 5. 應用程式啟動流程 ---
         function setupEventListeners() {
             document.querySelectorAll('.profile-input').forEach(el => el.addEventListener('input', updateProfileCalculations));
             document.querySelectorAll('.goal-button').forEach(btn => btn.addEventListener('click', (e) => selectGoal(e)));
@@ -539,49 +532,65 @@
             document.getElementById('prev-month-btn').addEventListener('click', showPrevMonth);
             document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
             document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
-            document.querySelectorAll('.range-btn').forEach(btn => btn.addEventListener('click', (e) => updateChartRange(btn.dataset.range)));
+            document.querySelectorAll('.range-btn').forEach(btn => btn.addEventListener('click', () => updateChartRange(btn.getAttribute('onclick').match(/'(.*?)'/)[1])));
             document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value));
-            document.getElementById('show-exercise-modal').addEventListener('click', () => document.getElementById('exercise-modal').style.display = 'block');
-            document.getElementById('close-exercise-modal').addEventListener('click', () => document.getElementById('exercise-modal').style.display = 'none');
-            window.addEventListener('click', (event) => { if (event.target == document.getElementById('exercise-modal')) document.getElementById('exercise-modal').style.display = "none"; });
             document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
             document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
         }
        
         async function main() {
-             try {
-                document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
-                document.getElementById('log-tab').classList.remove('hidden');
-
-                await liff.init({ liffId: liffId });
-                if (!liff.isLoggedIn()) { liff.login(); return; }
+            try {
+                await liff.init({ liffId });
+                if (!liff.isLoggedIn()) {
+                    liff.login({ redirectUri: window.location.href });
+                    return;
+                }
+                
                 const profile = await liff.getProfile();
-                currentUserId = profile.userId;
-                userProfileData.displayName = profile.displayName; // 將 LINE 的名字暫存起來
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetUserIdFromUrl = urlParams.get('targetUserId');
+                const operatorIdFromUrl = urlParams.get('operatorId');
 
-                // 檢查是否為管理員
-                const adminCheckResponse = await fetch(`${API_BASE_URL}/api/admin/check?userId=${currentUserId}`);
-                const { isAdmin } = await adminCheckResponse.json();
-                if (isAdmin) {
-                    document.getElementById('admin-user-id-display').textContent = currentUserId;
-                    document.getElementById('admin-info-box').classList.remove('hidden');
+                if (targetUserIdFromUrl && operatorIdFromUrl) {
+                    isViewingAsAdmin = true;
+                    userToLoad = targetUserIdFromUrl;
+                    operatorId = operatorIdFromUrl;
+                    document.getElementById('admin-view-banner').classList.remove('hidden');
+                } else {
+                    userToLoad = profile.userId;
+                    operatorId = profile.userId;
+                    userProfileData.displayName = profile.displayName;
+                }
+
+                const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
+                if (!statusRes.isActive) {
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('access-denied').classList.remove('hidden');
+                    return;
                 }
 
                 await loadProfileData();
+                
+                if(isViewingAsAdmin) {
+                     document.getElementById('target-user-display-name').textContent = userProfileData.admin_nickname || userProfileData.display_name || '該用戶';
+                }
+
+                document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
+                document.getElementById('log-tab').classList.remove('hidden');
+                
                 await loadLogDataForDate(currentDate);
                 await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
-               
                 setupEventListeners();
-             } catch (error) {
+
+            } catch (error) {
                 console.error("初始化失敗", error);
-                alert("系統初始化失敗，請稍後再試。");
-             } finally {
+                document.getElementById('loading-text').textContent = `初始化失敗: ${error.message}`;
+            } finally {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('app').classList.remove('hidden');
-             }
+            }
         }
-
-        // --- 5. 執行主程式 ---
+        
         main();
     </script>
 </body>
