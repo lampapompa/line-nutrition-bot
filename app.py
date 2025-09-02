@@ -106,6 +106,10 @@ def liff_page():
     # 它會去 templates 資料夾中，找出 liff.html 這個檔案並回傳
     return render_template('liff.html')
 
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
+
 @app.route("/init-db")
 def init_database_route():
     try:
