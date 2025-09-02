@@ -94,6 +94,19 @@ def liff_page():
 def admin_page():
     return render_template('admin.html')
 
+
+# --- Helper function to convert empty strings to None ---
+def to_int_or_none(value):
+    if value == '' or value is None:
+        return None
+    return int(value)
+
+def to_float_or_none(value):
+    if value == '' or value is None:
+        return None
+    return float(value)
+
+
 # --- API 端點 ---
 @app.route('/api/check_status', methods=['GET'])
 def check_status():
@@ -118,6 +131,24 @@ def handle_profile():
         if request.method == 'POST':
             data = request.json['data']
             today = date.today()
+
+            # **【關鍵修正】** 在這裡處理所有數字欄位，將空字串轉為 None
+            profile_values = (
+                user_id,
+                data.get('displayName'),
+                to_float_or_none(data.get('height')),
+                to_float_or_none(data.get('weight')),
+                to_int_or_none(data.get('age')),
+                data.get('gender'),
+                to_float_or_none(data.get('activityLevel')),
+                to_int_or_none(data.get('targetCalories')),
+                to_int_or_none(data.get('waterGoal')),
+                to_int_or_none(data.get('exerciseGoal')),
+                to_int_or_none(data.get('capsuleGoal')),
+                data.get('personalNotes'),
+                today
+            )
+            
             # 首次儲存或更新時，寫入 display_name
             cur.execute('''
                 INSERT INTO user_profiles (user_id, display_name, height, profile_weight, age, gender, activity_level, target_calories, water_goal, exercise_goal, capsule_goal, personal_notes, last_updated)
