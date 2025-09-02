@@ -41,7 +41,7 @@ def init_db():
                 expiry_timestamp TIMESTAMPTZ
             );
         ''')
-        # 每日記錄資料表 (結構不變)
+        # 每日記錄資料表
         cur.execute('''
             CREATE TABLE IF NOT EXISTS daily_logs (
                 id SERIAL PRIMARY KEY,
@@ -62,7 +62,7 @@ def init_db():
         # 檢查並新增欄位 (向下相容)
         profile_columns_to_check = {
             'display_name': 'VARCHAR(255)', 'admin_notes': 'TEXT', 'status': 'VARCHAR(50)',
-            'expiry_timestamp': 'TIMESTAMPTZ' # V2.1 新增欄位
+            'expiry_timestamp': 'TIMESTAMPTZ'
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -87,7 +87,6 @@ def liff_page():
 
 @app.route('/admin')
 def admin_page():
-    # 這裡未來會多加一道管理員身份驗證
     return render_template('admin.html')
 
 
@@ -99,7 +98,6 @@ def handle_profile():
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         if request.method == 'POST':
-            # ... (此部分邏輯與前一版相同，省略以保持清晰)
             data = request.json['data']
             today = date.today()
             cur.execute('''
@@ -120,7 +118,6 @@ def handle_profile():
             conn.commit()
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
         if request.method == 'GET':
-            # ... (此部分邏輯與前一版相同，省略以保持清晰)
             cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
             profile = cur.fetchone()
             if profile:
@@ -133,50 +130,102 @@ def handle_profile():
             return jsonify({})
     conn.close()
 
-
-@app.route('/api/log', methods=['POST'])
+@app.route('/api/log', methods=['GET', 'POST'])
 def handle_log():
-    # ... (此部分邏輯與前一版相同，省略以保持清晰)
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        req_data = request.json
-        user_id = req_data.get('userId')
-        log_date = req_data.get('date')
-        log_data = req_data.get('data')
-        operator_id = request.headers.get('X-Operator-User-Id')
-        
-        target_user_id = req_data.get('targetUserId', user_id) # 新增: 允許管理員指定目標用戶
+        if request.method == 'POST':
+            req_data = request.json
+            user_id = req_data.get('userId')
+            log_date = req_data.get('date')
+            log_data = req_data.get('data')
+            operator_id = request.headers.get('X-Operator-User-Id')
+            target_user_id = req_data.get('targetUserId', user_id)
 
-        if not all([user_id, log_date, log_data, operator_id]):
-             return jsonify({"error": "userId, date, data, and X-Operator-User-Id header are required"}), 400
+            if not all([user_id, log_date, log_data, operator_id]):
+                 return jsonify({"error": "userId, date, data, and X-Operator-User-Id header are required"}), 400
 
-        if operator_id != target_user_id and not is_admin(operator_id):
-            return jsonify({"error": "Permission denied."}), 403
+            if operator_id != target_user_id and not is_admin(operator_id):
+                return jsonify({"error": "Permission denied."}), 403
 
-        fields = [
-            'breakfast_text', 'breakfast_kcal', 'lunch_text', 'lunch_kcal',
-            'dinner_text', 'dinner_kcal', 'snacks_text', 'snacks_kcal',
-            'drinks_text', 'drinks_kcal', 'water_cc', 'exercise_text', 
-            'exercise_kcal', 'daily_weight', 'capsule_qty'
-        ]
-        update_clause = ", ".join([f"{field} = EXCLUDED.{field}" for field in fields])
+            fields = [
+                'breakfast_text', 'breakfast_kcal', 'lunch_text', 'lunch_kcal',
+                'dinner_text', 'dinner_kcal', 'snacks_text', 'snacks_kcal',
+                'drinks_text', 'drinks_kcal', 'water_cc', 'exercise_text', 
+                'exercise_kcal', 'daily_weight', 'capsule_qty'
+            ]
+            update_clause = ", ".join([f"{field} = EXCLUDED.{field}" for field in fields])
+            cur.execute(f'''
+                INSERT INTO daily_logs (user_id, log_date, {", ".join(fields)})
+                VALUES (%s, %s, {", ".join(["%s"]*len(fields))})
+                ON CONFLICT (user_id, log_date) DO UPDATE SET {update_clause}
+            ''', tuple([target_user_id, log_date] + [log_data.get(field) for field in fields]))
+            conn.commit()
+            return jsonify({'status': 'success', 'message': f'Log for {log_date} saved for user {target_user_id}.'})
 
-        cur.execute(f'''
-            INSERT INTO daily_logs (user_id, log_date, {", ".join(fields)})
-            VALUES (%s, %s, {", ".join(["%s"]*len(fields))})
-            ON CONFLICT (user_id, log_date) DO UPDATE SET {update_clause}
-        ''', tuple([target_user_id, log_date] + [log_data.get(field) for field in fields]))
-
-        conn.commit()
-        return jsonify({'status': 'success', 'message': f'Log for {log_date} saved for user {target_user_id}.'})
+        if request.method == 'GET':
+            user_id = request.args.get('userId')
+            log_date = request.args.get('date')
+            if not all([user_id, log_date]): return jsonify({"error": "userId and date are required"}), 400
+            cur.execute('SELECT * FROM daily_logs WHERE user_id = %s AND log_date = %s', (user_id, log_date))
+            log_entry = cur.fetchone()
+            return jsonify(dict(log_entry) if log_entry else None)
     conn.close()
 
+@app.route('/api/completion_dots', methods=['GET'])
+def get_completion_dots():
+    user_id = request.args.get('userId')
+    year = request.args.get('year')
+    month = request.args.get('month')
+    if not all([user_id, year, month]): return jsonify({"error": "userId, year, and month are required"}), 400
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute('''
+            SELECT DISTINCT EXTRACT(DAY FROM log_date) FROM daily_logs
+            WHERE user_id = %s AND EXTRACT(YEAR FROM log_date) = %s AND EXTRACT(MONTH FROM log_date) = %s
+            AND (breakfast_kcal IS NOT NULL OR lunch_kcal IS NOT NULL OR dinner_kcal IS NOT NULL OR snacks_kcal IS NOT NULL OR drinks_kcal IS NOT NULL)
+        ''', (user_id, year, month))
+        days_with_logs = [int(item[0]) for item in cur.fetchall()]
+    conn.close()
+    return jsonify(days_with_logs)
 
-# 其他API ... (GET log, trends, completion_dots 與前一版相同，此處省略)
+@app.route('/api/trends', methods=['GET'])
+def get_trends():
+    user_id = request.args.get('userId')
+    range_param = request.args.get('range', '7days')
+    if not user_id: return jsonify({"error": "userId is required"}), 400
+    today = datetime.now().date()
+    if range_param == 'this_month':
+        start_date = today.replace(day=1)
+    elif range_param == '28days':
+        start_date = today - timedelta(days=27)
+    else:
+        try:
+            start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = today - timedelta(days=6)
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        cur.execute('''
+            SELECT log_date, daily_weight,
+                   COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories,
+                   water_cc, exercise_kcal
+            FROM daily_logs WHERE user_id = %s AND log_date BETWEEN %s AND %s ORDER BY log_date ASC
+        ''', (user_id, start_date, today))
+        logs = cur.fetchall()
+    conn.close()
+    labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range((today - start_date).days + 1)]
+    logs_dict = {log['log_date'].strftime('%Y-%m-%d'): log for log in logs}
+    trend_data = {
+        'weight': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('daily_weight') for i in range(len(labels))],
+        'calories': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('calories') for i in range(len(labels))],
+        'water': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('water_cc') for i in range(len(labels))],
+        'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('exercise_kcal') for i in range(len(labels))]
+    }
+    return jsonify({ 'labels': labels, **trend_data })
 
 
 # --- 管理員專用 API ---
-
 @app.route('/api/admin/check', methods=['GET'])
 def admin_check():
     user_id = request.args.get('userId')
@@ -188,7 +237,6 @@ def get_all_users():
     operator_id = request.headers.get('X-Operator-User-Id')
     if not is_admin(operator_id):
         return jsonify({"error": "Permission denied"}), 403
-
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute('SELECT user_id, display_name, status, last_updated, admin_notes, expiry_timestamp FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
@@ -196,17 +244,12 @@ def get_all_users():
         now = datetime.now(TAIPEI_TZ)
         for row in cur.fetchall():
             user = dict(row)
-            # 計算當前狀態
             expiry = user.get('expiry_timestamp')
             if expiry:
                 user['expiry_timestamp'] = expiry.astimezone(TAIPEI_TZ).isoformat()
-                if expiry > now:
-                    user['computed_status'] = 'Active'
-                else:
-                    user['computed_status'] = 'Expired'
-            else:
-                user['computed_status'] = 'Inactive'
-            
+                if expiry > now: user['computed_status'] = 'Active'
+                else: user['computed_status'] = 'Expired'
+            else: user['computed_status'] = 'Inactive'
             if user.get('last_updated'):
                 user['last_updated'] = user['last_updated'].strftime('%Y-%m-%d')
             users.append(user)
@@ -218,61 +261,38 @@ def update_admin_profile():
     operator_id = request.headers.get('X-Operator-User-Id')
     if not is_admin(operator_id):
         return jsonify({"error": "Permission denied"}), 403
-
     data = request.json
     target_user_id = data.get('userId')
     if not target_user_id:
         return jsonify({"error": "Target userId is required"}), 400
-
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # 處理備註
         if 'adminNotes' in data:
-            cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s',
-                        (data['adminNotes'], target_user_id))
-        
-        # 處理效期
+            cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s', (data['adminNotes'], target_user_id))
         if 'expiryAction' in data:
             action = data['expiryAction']
             new_expiry = None
             now = datetime.now(TAIPEI_TZ)
-
-            if action == 'clear':
-                new_expiry = None
-            elif action.endswith('h'):
-                hours = int(action[:-1])
-                new_expiry = now + timedelta(hours=hours)
-            elif action.endswith('d'):
-                days = int(action[:-1])
-                new_expiry = now + timedelta(days=days)
+            if action == 'clear': new_expiry = None
+            elif action.endswith('h'): new_expiry = now + timedelta(hours=int(action[:-1]))
+            elif action.endswith('d'): new_expiry = now + timedelta(days=int(action[:-1]))
             elif action == 'custom':
-                try:
-                    # 前端傳來的會是 ISO 格式的字串
-                    new_expiry = datetime.fromisoformat(data['customExpiry']).astimezone(TAIPEI_TZ)
+                try: new_expiry = datetime.fromisoformat(data['customExpiry']).astimezone(TAIPEI_TZ)
                 except (ValueError, KeyError):
                     conn.close()
                     return jsonify({"error": "Invalid customExpiry format"}), 400
-            
-            cur.execute('UPDATE user_profiles SET expiry_timestamp = %s WHERE user_id = %s',
-                        (new_expiry, target_user_id))
-        
+            cur.execute('UPDATE user_profiles SET expiry_timestamp = %s WHERE user_id = %s', (new_expiry, target_user_id))
         conn.commit()
-        
-        # 返回更新後的用戶資料
         cur.execute('SELECT user_id, display_name, admin_notes, expiry_timestamp FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user = dict(cur.fetchone())
         if updated_user.get('expiry_timestamp'):
              updated_user['expiry_timestamp'] = updated_user['expiry_timestamp'].astimezone(TAIPEI_TZ).isoformat()
-
-
     conn.close()
     return jsonify({"status": "success", "user": updated_user})
-
 
 # --- 啟動伺服器 ---
 with app.app_context():
     init_db()
 
 if __name__ == '__main__':
-    # 移除 debug=True for production
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
