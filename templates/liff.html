@@ -548,6 +548,7 @@
                 if (!liff.isLoggedIn()) { liff.login(); return; }
                 const profile = await liff.getProfile();
                 currentUserId = profile.userId;
+                alert("您的 LINE User ID 是：" + currentUserId); // <--- 就是加上這一行
                  
                 await loadProfileData();
                 await loadLogDataForDate(currentDate);
