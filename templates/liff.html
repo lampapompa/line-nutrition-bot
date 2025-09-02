@@ -562,11 +562,14 @@
                     userProfileData.displayName = profile.displayName;
                 }
 
-                const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
-                if (!statusRes.isActive) {
-                    document.getElementById('loading').classList.add('hidden');
-                    document.getElementById('access-denied').classList.remove('hidden');
-                    return;
+                // **【關鍵修正】** 只有在非管理員模式下才檢查權限
+                if (!isViewingAsAdmin) {
+                    const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
+                    if (!statusRes.isActive) {
+                        document.getElementById('loading').classList.add('hidden');
+                        document.getElementById('access-denied').classList.remove('hidden');
+                        return; // 中斷後續執行
+                    }
                 }
 
                 await loadProfileData();
