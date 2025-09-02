@@ -94,6 +94,19 @@ def liff_page():
 def admin_page():
     return render_template('admin.html')
 
+
+# --- Helper function to convert empty strings to None ---
+def to_int_or_none(value):
+    if value == '' or value is None:
+        return None
+    return int(value)
+
+def to_float_or_none(value):
+    if value == '' or value is None:
+        return None
+    return float(value)
+
+
 # --- API 端點 ---
 @app.route('/api/check_status', methods=['GET'])
 def check_status():
@@ -110,7 +123,9 @@ def handle_profile():
     
     # 權限檢查
     is_active, status = check_user_active(user_id)
-    if request.method == 'GET' and not is_active:
+    operator_id = request.headers.get('X-Operator-User-Id')
+    # 只有當非管理員訪問時，才檢查目標用戶是否過期
+    if request.method == 'GET' and not is_active and not is_admin(operator_id):
         return jsonify({"error": "Access denied. Your subscription may have expired.", "status": status}), 403
 
     conn = get_db_connection()
@@ -118,6 +133,24 @@ def handle_profile():
         if request.method == 'POST':
             data = request.json['data']
             today = date.today()
+
+            # **【關鍵修正】** 在這裡處理所有數字欄位，將空字串轉為 None
+            profile_values = (
+                user_id,
+                data.get('displayName'),
+                to_float_or_none(data.get('height')),
+                to_float_or_none(data.get('weight')),
+                to_int_or_none(data.get('age')),
+                data.get('gender'),
+                to_float_or_none(data.get('activityLevel')),
+                to_int_or_none(data.get('targetCalories')),
+                to_int_or_none(data.get('waterGoal')),
+                to_int_or_none(data.get('exerciseGoal')),
+                to_int_or_none(data.get('capsuleGoal')),
+                data.get('personalNotes'),
+                today
+            )
+            
             # 首次儲存或更新時，寫入 display_name
             cur.execute('''
                 INSERT INTO user_profiles (user_id, display_name, height, profile_weight, age, gender, activity_level, target_calories, water_goal, exercise_goal, capsule_goal, personal_notes, last_updated)
@@ -130,10 +163,21 @@ def handle_profile():
                     exercise_goal = EXCLUDED.exercise_goal, capsule_goal = EXCLUDED.capsule_goal,
                     personal_notes = EXCLUDED.personal_notes, last_updated = EXCLUDED.last_updated
             ''', (
-                user_id, data.get('displayName'), data.get('height'), data.get('weight'), data.get('age'),
-                data.get('gender'), data.get('activityLevel'), data.get('targetCalories'),
-                data.get('waterGoal'), data.get('exerciseGoal'), data.get('capsuleGoal'),
-                data.get('personalNotes'), today
+                # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 主要就是修改了下面這些地方 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+                user_id, 
+                data.get('displayName'), 
+                to_float_or_none(data.get('height')),       # 把空字串轉成 None
+                to_float_or_none(data.get('weight')),       # 把空字串轉成 None
+                to_int_or_none(data.get('age')),            # 把空字串轉成 None
+                data.get('gender'), 
+                to_float_or_none(data.get('activityLevel')),# 把空字串轉成 None
+                to_int_or_none(data.get('targetCalories')), # 把空字串轉成 None
+                to_int_or_none(data.get('waterGoal')),      # 把空字串轉成 None
+                to_int_or_none(data.get('exerciseGoal')),   # 把空字串轉成 None
+                to_int_or_none(data.get('capsuleGoal')),    # 把空字串轉成 None
+                data.get('personalNotes'), 
+                today
+                # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 修改結束 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
             ))
             conn.commit()
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
