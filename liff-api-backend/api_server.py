@@ -123,7 +123,9 @@ def handle_profile():
     
     # 權限檢查
     is_active, status = check_user_active(user_id)
-    if request.method == 'GET' and not is_active:
+    operator_id = request.headers.get('X-Operator-User-Id')
+    # 只有當非管理員訪問時，才檢查目標用戶是否過期
+    if request.method == 'GET' and not is_active and not is_admin(operator_id):
         return jsonify({"error": "Access denied. Your subscription may have expired.", "status": status}), 403
 
     conn = get_db_connection()
