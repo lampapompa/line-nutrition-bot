@@ -36,14 +36,14 @@
                         <th class="py-3 px-4 text-left">LINE 名稱</th>
                         <th class="py-3 px-4 text-left">管理員暱稱</th>
                         <th class="py-3 px-4 text-left">狀態</th>
-                        <th class="py-3 px-4 text-left">會籍到期於</th>
+                        <th class="py-3 px-4 text-left">會員起日</th>
+                        <th class="py-3 px-4 text-left">會員迄日</th>
                         <th class="py-3 px-4 text-left min-w-[320px]">權限設定</th>
                         <th class="py-3 px-4 text-left">教練備註</th>
                     </tr>
                 </thead>
                 <tbody id="user-list-body" class="text-gray-700">
-                    <!-- User rows will be inserted here by JavaScript -->
-                </tbody>
+                    </tbody>
             </table>
         </div>
     </div>
@@ -88,29 +88,34 @@
         }
 
         function renderUserRow(user) {
+            // [MODIFIED] 日期處理邏輯
+            const startDate = user.membership_start_date ? new Date(user.membership_start_date) : null;
+            const startDateText = startDate ? startDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
+            const startValue = user.membership_start_date ? user.membership_start_date.substring(0, 16) : '';
+
             const expiryDate = user.expiry_timestamp ? new Date(user.expiry_timestamp) : null;
             const expiryText = expiryDate ? expiryDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
-            const displayName = user.display_name || '(尚未同步)';
+            
+            const displayName = user.display_name || '(新用戶)';
             const adminNickname = user.admin_nickname || '';
 
-            // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 狀態與顏色判斷邏輯更新 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+            // [MODIFIED] 新的狀態與顏色判斷邏輯
             let statusClass = '';
             let statusText = '';
 
             if (user.computed_status === 'Active') {
                 statusClass = 'bg-green-200 text-green-800';
                 statusText = '有效';
-            } else if (user.computed_status === 'Expiring') {
-                statusClass = 'bg-yellow-200 text-yellow-800'; // 新增黃色
-                statusText = '即將到期'; // 新增中文狀態
-            } else if (user.computed_status === 'Expired') {
+            } else if (user.computed_status === 'Trial') {
+                statusClass = 'bg-blue-200 text-blue-800';
+                statusText = '試用';
+            } else if (user.computed_status === 'Terminated') {
                 statusClass = 'bg-red-200 text-red-800';
-                statusText = '已過期';
-            } else { // Inactive 或其他
+                statusText = '已終止';
+            } else { // Fallback for any other case
                 statusClass = 'bg-gray-200 text-gray-800';
-                statusText = '未啟用';
+                statusText = '未知';
             }
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 更新結束 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50">
@@ -121,14 +126,19 @@
                     </td>
                     <td class="py-3 px-4">
                         <input type="text" value="${adminNickname}" 
-                                onchange="handleNicknameUpdate('${user.user_id}', this.value)"
-                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                placeholder="設定暱稱...">
+                               onchange="handleNicknameUpdate('${user.user_id}', this.value)"
+                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                               placeholder="設定暱稱...">
                     </td>
                     <td class="py-3 px-4">
                         <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs ${statusClass}">
                             ${statusText}
                         </span>
+                    </td>
+                    <td class="py-3 px-4 text-gray-600">
+                        <input type="datetime-local" value="${startValue}" 
+                               onchange="handleStartDateUpdate('${user.user_id}', this.value)" 
+                               class="border rounded px-1 py-0.5 text-xs">
                     </td>
                     <td class="py-3 px-4 text-gray-600">${expiryText}</td>
                     <td class="py-3 px-4 space-x-1">
@@ -141,25 +151,25 @@
                     </td>
                     <td class="py-3 px-4">
                         <input type="text" value="${user.admin_notes || ''}" 
-                                onchange="handleNotesUpdate('${user.user_id}', this.value)"
-                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                                placeholder="新增備註...">
+                               onchange="handleNotesUpdate('${user.user_id}', this.value)"
+                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                               placeholder="新增備註...">
                     </td>
                 </tr>
             `;
         }
 
         function updateRowUI(userId, updatedUserData) {
-             const rowElement = document.getElementById(`user-row-${userId}`);
-             if(rowElement) {
-                // Merge old data with new data to prevent missing fields
-                const oldDisplayName = rowElement.querySelector('a').textContent.trim();
-                const mergedUser = {
-                    ...updatedUserData,
-                    display_name: updatedUserData.display_name || oldDisplayName
-                };
-                rowElement.outerHTML = renderUserRow(mergedUser);
-             }
+              const rowElement = document.getElementById(`user-row-${userId}`);
+              if(rowElement) {
+                  // Merge old data with new data to prevent missing fields
+                  const oldDisplayName = rowElement.querySelector('a').textContent.trim();
+                  const mergedUser = {
+                      ...updatedUserData,
+                      display_name: updatedUserData.display_name || oldDisplayName
+                  };
+                  rowElement.outerHTML = renderUserRow(mergedUser);
+              }
         }
 
         async function handleExpiryUpdate(userId, action, customValue = null) {
@@ -174,6 +184,16 @@
             }
         }
         
+        // [NEW] 新增處理會員起日更新的函式
+        async function handleStartDateUpdate(userId, value) {
+            if (!value) return; // 如果清空日期則不動作
+            const payload = { membershipStartDate: new Date(value).toISOString() };
+            const updatedUser = await updateUser(userId, payload);
+            if (updatedUser) {
+                updateRowUI(userId, updatedUser);
+            }
+        }
+
         async function handleNotesUpdate(userId, notes) {
             const updatedUser = await updateUser(userId, { adminNotes: notes });
             if (updatedUser) updateRowUI(userId, updatedUser);
