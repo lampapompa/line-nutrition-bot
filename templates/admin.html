@@ -88,13 +88,29 @@
         }
 
         function renderUserRow(user) {
-            const now = new Date();
             const expiryDate = user.expiry_timestamp ? new Date(user.expiry_timestamp) : null;
-            
-            const statusClass = user.computed_status === 'Active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800';
             const expiryText = expiryDate ? expiryDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
             const displayName = user.display_name || '(尚未同步)';
             const adminNickname = user.admin_nickname || '';
+
+            // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 狀態與顏色判斷邏輯更新 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+            let statusClass = '';
+            let statusText = '';
+
+            if (user.computed_status === 'Active') {
+                statusClass = 'bg-green-200 text-green-800';
+                statusText = '有效';
+            } else if (user.computed_status === 'Expiring') {
+                statusClass = 'bg-yellow-200 text-yellow-800'; // 新增黃色
+                statusText = '即將到期'; // 新增中文狀態
+            } else if (user.computed_status === 'Expired') {
+                statusClass = 'bg-red-200 text-red-800';
+                statusText = '已過期';
+            } else { // Inactive 或其他
+                statusClass = 'bg-gray-200 text-gray-800';
+                statusText = '未啟用';
+            }
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 更新結束 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50">
@@ -105,13 +121,13 @@
                     </td>
                     <td class="py-3 px-4">
                         <input type="text" value="${adminNickname}" 
-                               onchange="handleNicknameUpdate('${user.user_id}', this.value)"
-                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                               placeholder="設定暱稱...">
+                                onchange="handleNicknameUpdate('${user.user_id}', this.value)"
+                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                placeholder="設定暱稱...">
                     </td>
                     <td class="py-3 px-4">
                         <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs ${statusClass}">
-                            ${user.computed_status}
+                            ${statusText}
                         </span>
                     </td>
                     <td class="py-3 px-4 text-gray-600">${expiryText}</td>
@@ -125,9 +141,9 @@
                     </td>
                     <td class="py-3 px-4">
                         <input type="text" value="${user.admin_notes || ''}" 
-                               onchange="handleNotesUpdate('${user.user_id}', this.value)"
-                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                               placeholder="新增備註...">
+                                onchange="handleNotesUpdate('${user.user_id}', this.value)"
+                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                placeholder="新增備註...">
                     </td>
                 </tr>
             `;
