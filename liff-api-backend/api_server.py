@@ -353,38 +353,36 @@ def update_admin_profile():
     
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        # 更新文字欄位 (邏輯不變)
         if 'adminNotes' in data:
             cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s', (data['adminNotes'], target_user_id))
         if 'adminNickname' in data:
             cur.execute('UPDATE user_profiles SET admin_nickname = %s WHERE user_id = %s', (data['adminNickname'], target_user_id))
-        
-        # [NEW] 新增處理會員起日的邏輯
-        if 'membershipStartDate' in data:
-            try:
-                start_date = datetime.fromisoformat(data['membershipStartDate']).astimezone(pytz.utc) if data['membershipStartDate'] else None
-                cur.execute('UPDATE user_profiles SET membership_start_date = %s WHERE user_id = %s', (start_date, target_user_id))
-            except (ValueError, KeyError):
-                conn.close()
-                return jsonify({"error": "Invalid membershipStartDate format"}), 400
 
-        if 'expiryAction' in data:
-            action = data['expiryAction']
-            new_expiry = None
-            now_utc = datetime.now(pytz.utc)
-            if action == 'clear': new_expiry = None
-            elif action.endswith('h'): new_expiry = now_utc + timedelta(hours=int(action[:-1]))
-            elif action.endswith('d'): new_expiry = now_utc + timedelta(days=int(action[:-1]))
-            elif action == 'custom':
-                try: new_expiry = datetime.fromisoformat(data['customExpiry']).astimezone(pytz.utc)
+        # 處理日期欄位更新
+        date_fields = {
+            'membershipStartDate': 'membership_start_date',
+            'expiryTimestamp': 'expiry_timestamp',
+            'serviceTerminationDate': 'service_termination_date'
+        }
+        for key, column in date_fields.items():
+            if key in data:
+                try:
+                    date_val = datetime.fromisoformat(data[key]).astimezone(pytz.utc) if data[key] else None
+                    cur.execute(f'UPDATE user_profiles SET {column} = %s WHERE user_id = %s', (date_val, target_user_id))
                 except (ValueError, KeyError):
                     conn.close()
-                    return jsonify({"error": "Invalid customExpiry format"}), 400
-            if new_expiry is not None or action == 'clear':
-                cur.execute('UPDATE user_profiles SET expiry_timestamp = %s WHERE user_id = %s', (new_expiry, target_user_id))
-        
+                    return jsonify({"error": f"Invalid format for {key}"}), 400
+
+        # 處理「終止服務」請求
+        if data.get('terminate') is True:
+            past_time = datetime.now(pytz.utc) - timedelta(minutes=1)
+            cur.execute('UPDATE user_profiles SET service_termination_date = %s WHERE user_id = %s', (past_time, target_user_id))
+            print(f"使用者 {target_user_id} 已被管理員終止服務。")
+
         conn.commit()
         
-        # [MODIFIED] 返回更新後的完整用戶資料，包含新欄位和新狀態邏輯
+        # 返回更新後的完整用戶資料 (邏輯不變)
         cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user_raw = cur.fetchone()
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
@@ -394,6 +392,7 @@ def update_admin_profile():
             term_date = updated_user.get('service_termination_date')
             start_date = updated_user.get('membership_start_date')
             end_date = updated_user.get('expiry_timestamp')
+            
             if term_date and term_date <= now_utc_for_status:
                 updated_user['computed_status'] = 'Terminated'
             elif start_date and end_date and start_date <= now_utc_for_status <= end_date:
