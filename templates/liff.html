@@ -106,7 +106,7 @@
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
                 <div class="flex justify-between items-center flex-wrap gap-2">
-                    <div id="membership-dates-display" class="hidden text-sm text-gray-600 bg-green-100 px-3 py-1 rounded-full"></div>
+                    <div id="membership-dates-display" class="hidden text-sm px-3 py-1 rounded-full"></div>
                     <p id="last-updated" class="text-xs text-gray-400"></p>
                 </div>
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -333,7 +333,6 @@
         // --- 2. 輔助函式 ---
         const formatDate = (date) => new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         
-        // [NEW] 格式化完整時間戳的函式
         const formatTimestamp = (isoString) => {
             if (!isoString) return '';
             const date = new Date(isoString);
@@ -373,7 +372,6 @@
         // --- 3. 核心功能函式 ---
         async function saveProfileData(callback) {
             if (!userToLoad) return;
-            // [MODIFIED] 加入新的 exercise_goal_text 欄位
             const profileData = {
                 displayName: userProfileData.displayName,
                 height: document.getElementById('height').value,
@@ -384,7 +382,7 @@
                 targetCalories: document.getElementById('target-calories').value,
                 waterGoal: document.getElementById('water-goal').value,
                 exerciseGoal: document.getElementById('exercise-goal').value,
-                exerciseGoalText: document.getElementById('exercise-goal-text').value, // [NEW]
+                exerciseGoalText: document.getElementById('exercise-goal-text').value,
                 capsuleGoal: document.getElementById('capsule-goal').value,
                 personalNotes: document.getElementById('personal-notes').value,
             };
@@ -404,7 +402,6 @@
         function triggerProfileAutosave() {
             clearTimeout(profileAutosaveTimer);
             profileAutosaveTimer = setTimeout(() => {
-                // [MODIFIED] 儲存後不再強制重載，避免閃爍和打斷輸入
                 saveProfileData();
             }, 1500);
         }
@@ -413,6 +410,7 @@
             if (!userToLoad) return;
             try {
                 const data = await fetchAPI(`/api/profile?userId=${userToLoad}`);
+                // [MODIFIED] 確保從API回來的 status 也被正確更新
                 userProfileData = { ...userProfileData, ...data };
                 
                 document.getElementById('height').value = userProfileData.height || '';
@@ -422,11 +420,10 @@
                 document.getElementById('activity-level').value = userProfileData.activity_level || 1.55;
                 document.getElementById('water-goal').value = userProfileData.water_goal || '';
                 document.getElementById('exercise-goal').value = userProfileData.exercise_goal || '';
-                document.getElementById('exercise-goal-text').value = userProfileData.exercise_goal_text || ''; // [NEW]
+                document.getElementById('exercise-goal-text').value = userProfileData.exercise_goal_text || '';
                 document.getElementById('capsule-goal').value = userProfileData.capsule_goal || '';
                 document.getElementById('personal-notes').value = userProfileData.personal_notes || '';
                 
-                // [MODIFIED] 使用新的時間格式化函式
                 document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
 
                 document.getElementById('target-calories').value = userProfileData.target_calories || '';
@@ -477,7 +474,6 @@
             document.querySelectorAll('#daily-log-inputs [data-field]').forEach(el => { el.value = ''; });
             if (!userToLoad) return;
             try {
-                // [MODIFIED] API 回應格式已變更
                 const response = await fetchAPI(`/api/log?userId=${userToLoad}&date=${formatDate(date)}`);
                 const logData = response.log_data;
                 const prevWeight = response.previous_day_weight;
@@ -489,12 +485,11 @@
                     });
                 }
                 
-                // [NEW] 渲染體重快捷鈕
                 renderWeightQuickButtons(prevWeight);
             } catch (error)
             {
                 console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
-                renderWeightQuickButtons(null); // 即使失敗也要確保按鈕區域被處理
+                renderWeightQuickButtons(null);
             } finally {
                 currentExerciseSession = []; 
                 updateGoalDashboard();
@@ -528,7 +523,6 @@
                  if (element.tagName === 'BUTTON') {
                      element.classList.add('active', 'bg-emerald-500', 'text-white');
                      element.classList.remove('bg-gray-200');
-                     // 不再清除 input.value，讓 flatpickr 處理
                  }
              }
             
@@ -546,6 +540,7 @@
         
         function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
 
+        // [MODIFIED] 修正同步與初始化問題
         function switchTab(tabName) {
             ['profile', 'log', 'trends'].forEach(tabId => {
                 document.getElementById(tabId + '-tab').classList.add('hidden');
@@ -554,10 +549,23 @@
             document.getElementById(tabName + '-tab').classList.remove('hidden');
             const button = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
             button.classList.add('active', 'text-gray-900');
+            
             if (tabName === 'trends') {
-                 document.getElementById('calc-footnote').style.display = 'none';
-                 renderChart();
-            } else if (tabName === 'log' || tabName === 'profile') { // [MODIFIED] profile頁也顯示註腳
+                document.getElementById('calc-footnote').style.display = 'none';
+                // [MODIFIED] 在此處初始化日期選擇器，確保元素可見
+                flatpickr("#start-date-picker", {
+                    locale: "zh_tw",
+                    dateFormat: "Y-m-d",
+                    onChange: function(selectedDates, dateStr, instance) {
+                        updateChartRange(dateStr, instance.input);
+                    }
+                });
+                renderChart();
+            } else if (tabName === 'log') {
+                document.getElementById('calc-footnote').style.display = 'block';
+                // [MODIFIED] 切換到日誌頁時，強制刷新儀表板以同步目標
+                updateGoalDashboard();
+            } else if (tabName === 'profile') {
                 document.getElementById('calc-footnote').style.display = 'block';
             } else {
                 document.getElementById('calc-footnote').style.display = 'none';
@@ -623,7 +631,7 @@
         }
         
         function getProgressBarColorClass(percentage, isReversed = false) {
-            if (percentage <= 0) return 'progress-bar-gray'; // [MODIFIED] 處理小於等於0的情況
+            if (percentage <= 0) return 'progress-bar-gray';
             
             if (isReversed) { 
                 if (percentage >= 100) return 'progress-bar-red';
@@ -784,7 +792,6 @@
             clearInput('exercise_kcal', '');
         }
         
-        // [MODIFIED] 運動目標估算與快捷鈕相關函式 (現在也處理文字)
         function updateExerciseGoalCalculations() {
             const goalInput = document.getElementById('exercise-goal');
             const estimateP = document.getElementById('exercise-goal-estimate');
@@ -837,7 +844,6 @@
             ).join('');
         }
         
-        // [NEW] 渲染體重快捷鈕
         function renderWeightQuickButtons(prevWeight) {
             const container = document.getElementById('quick-add-weight');
             if (!container) return;
@@ -854,7 +860,6 @@
         function setupEventListeners() {
             document.querySelectorAll('.profile-input').forEach(el => {
                 el.addEventListener('input', () => {
-                    // 運動目標的文字框變動時，不需要重新計算BMR等，但需要觸發儲存
                     if(el.id === 'exercise-goal-text') {
                          triggerProfileAutosave();
                     } else {
@@ -906,7 +911,6 @@
                 updateExerciseInputs();
             });
             
-            // [NEW] 體重和膠囊快捷鈕的事件監聽
             document.getElementById('quick-add-weight').addEventListener('click', (event) => {
                 const target = event.target.closest('button');
                 if (!target) return;
@@ -918,8 +922,8 @@
                     weightInput.value = value;
                 } else if (action === 'adjust') {
                     let currentWeight = parseFloat(weightInput.value) || 0;
-                    currentWeight = parseFloat((currentWeight + value).toFixed(1)); // 處理小數點精度問題
-                    weightInput.value = Math.max(0, currentWeight); // 確保不為負數
+                    currentWeight = parseFloat((currentWeight + value).toFixed(1));
+                    weightInput.value = Math.max(0, currentWeight);
                 }
                 weightInput.dispatchEvent(new Event('input', { bubbles: true }));
             });
@@ -986,15 +990,6 @@
                     return;
                 }
                 
-                // [NEW] 初始化 flatpickr 日期選擇器
-                flatpickr("#start-date-picker", {
-                    locale: "zh_tw", // 使用繁體中文
-                    dateFormat: "Y-m-d",
-                    onChange: function(selectedDates, dateStr, instance) {
-                        updateChartRange(dateStr, instance.input);
-                    }
-                });
-                
                 const profile = await liff.getProfile();
                 const urlParams = new URLSearchParams(window.location.search);
                 const targetUserIdFromUrl = urlParams.get('targetUserId');
@@ -1018,7 +1013,7 @@
                         document.getElementById('access-denied').classList.remove('hidden');
                         return;
                     }
-                    userProfileData.status = statusRes.status; // [MODIFIED] 將狀態存起來
+                    userProfileData.status = statusRes.status;
                     if (statusRes.status === 'Trial') {
                         document.getElementById('trial-banner').classList.remove('hidden');
                     }
@@ -1026,17 +1021,30 @@
                 
                 await loadProfileData(); 
                 
-                // [MODIFIED] 修正會籍期間顯示的 Bug
-                if (userProfileData.status === 'Active' && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
+                // [MODIFIED] 重寫會籍顯示邏輯，解決所有相關問題
+                const displayDiv = document.getElementById('membership-dates-display');
+                if (userProfileData.membership_start_date) {
                     const startDate = new Date(userProfileData.membership_start_date);
                     const endDate = new Date(userProfileData.expiry_timestamp);
                     const startDateStr = startDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
                     const endDateStr = endDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                    const displayDiv = document.getElementById('membership-dates-display');
-                    displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
-                    displayDiv.classList.remove('hidden');
+                    
+                    displayDiv.classList.remove('hidden', 'bg-green-100', 'bg-yellow-100', 'text-gray-600', 'text-yellow-800');
+
+                    if (userProfileData.status === 'Active') {
+                        displayDiv.classList.add('bg-green-100', 'text-gray-600');
+                        displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
+                    } else { // 包含 Trial 或其他狀態
+                        displayDiv.classList.add('bg-yellow-100', 'text-yellow-800');
+                        displayDiv.textContent = `試用中: ${startDateStr} - ${endDateStr} (請洽管理員)`;
+                    }
+                    // 同時修正「28天會籍」按鈕的顯示邏輯
                     document.getElementById('membership-range-btn').classList.remove('hidden');
+                } else {
+                    displayDiv.classList.add('hidden');
+                    document.getElementById('membership-range-btn').classList.add('hidden');
                 }
+
                 
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
                     console.log('偵測到首次登入或名稱未同步，自動更新名稱...');
