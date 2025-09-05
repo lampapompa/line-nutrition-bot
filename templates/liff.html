@@ -25,8 +25,13 @@
         .calendar-day.completed .completion-dot { display: block; }
         .goal-button { transition: all 0.2s; }
         .goal-button.selected { background-color: #10B981; color: white; border-color: #10B981; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 25% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 10px; }
+        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .range-btn.active { background-color: #10B981; color: white; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+
+        /* --- 新增的 CSS 樣式 --- */
         .tall-input { padding-top: 0.75rem; padding-bottom: 0.75rem; }
         .quick-add-btn {
             background-color: #e5e7eb; color: #4b5563;
@@ -34,6 +39,7 @@
             border-radius: 0.375rem; transition: background-color 0.2s;
         }
         .quick-add-btn:hover { background-color: #d1d5db; }
+
         .progress-bar-container {
             background-color: #e5e7eb; border-radius: 9999px;
             height: 8px; width: 100%; overflow: hidden;
@@ -92,7 +98,7 @@
 
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
-                <div class="flex justify-between items-center">
+                <div class="flex justify-between items-center flex-wrap gap-2">
                     <div id="membership-dates-display" class="hidden text-sm text-gray-600 bg-green-100 px-3 py-1 rounded-full"></div>
                     <p id="last-updated" class="text-xs text-gray-400"></p>
                 </div>
@@ -262,9 +268,9 @@
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
         let liffId = "2008021259-NLyg2AWl"; 
         
-        let userToLoad = null;      
-        let operatorId = null;      
-        let isViewingAsAdmin = false; 
+        let userToLoad = null;
+        let operatorId = null;
+        let isViewingAsAdmin = false;
         let userProfileData = {};
         
         let currentDate = new Date();
@@ -290,7 +296,7 @@
             return text ? JSON.parse(text) : {};
         }
 
-        // --- 3. 核心功能函式 (這部分維持不變) ---
+        // --- 3. 核心功能函式 ---
         async function saveProfileData() {
             if (!userToLoad) return;
             const profileData = {
@@ -412,7 +418,7 @@
             await loadLogDataForDate(currentDate);
         }
         
-        // [MODIFIED] 更新圖表範圍的函式
+        // [MODIFIED] 更新圖表範圍的函式，以處理 "本次課程"
         async function updateChartRange(range, element = null) {
             document.querySelectorAll('.range-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-emerald-500', 'text-white');
@@ -421,14 +427,20 @@
              if (element) {
                  element.classList.add('active', 'bg-emerald-500', 'text-white');
                  element.classList.remove('bg-gray-200');
-                 document.getElementById('start-date-picker').value = '';
+                 if (element.tagName !== 'BUTTON') { // 如果是日期選擇器觸發的
+                    // 取消所有按鈕的 active 狀態
+                    document.querySelectorAll('.range-btn').forEach(btn => {
+                        btn.classList.remove('active', 'bg-emerald-500', 'text-white');
+                        btn.classList.add('bg-gray-200');
+                    });
+                 } else { // 如果是按鈕觸發的
+                    document.getElementById('start-date-picker').value = '';
+                 }
              }
 
             let finalRange = range;
-            // 如果是 "本次課程"，我們需要動態產生日期範圍
             if (range === 'course' && userProfileData.membership_start_date) {
-                const startDate = userProfileData.membership_start_date.split('T')[0];
-                finalRange = startDate;
+                finalRange = userProfileData.membership_start_date.split('T')[0];
             }
             await renderChart(finalRange);
         }
@@ -484,6 +496,7 @@
                 document.getElementById('tdee-display').textContent = '---';
                 updateGoalOptions(null);
             }
+            // 觸發儀表板更新以顯示目標
             updateGoalDashboard();
         }
 
@@ -516,17 +529,20 @@
         }
         
         function updateGoalDashboard() {
+            // 從個人檔案獲取目標值
             const goalCalories = parseInt(userProfileData.target_calories) || 0;
             const goalWater = parseInt(userProfileData.water_goal) || 0;
             const goalExercise = parseInt(userProfileData.exercise_goal) || 0;
             const goalCapsule = parseInt(userProfileData.capsule_goal) || 0;
 
+            // 從日誌輸入獲取當前值
             let todayCalories = 0;
             document.querySelectorAll('.calorie-input, [data-field="drinks_kcal"]').forEach(input => { todayCalories += parseInt(input.value) || 0; });
             const todayWater = parseInt(document.querySelector('[data-field="water_cc"]').value) || 0;
             const todayExercise = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
             const todayCapsule = parseInt(document.querySelector('[data-field="capsule_qty"]').value) || 0;
 
+            // 更新儀表板文字
             document.querySelector('[data-value="calories-today"]').textContent = todayCalories;
             document.querySelector('[data-value="calories-goal"]').textContent = goalCalories || '...';
             document.querySelector('[data-value="water-today"]').textContent = todayWater;
@@ -536,12 +552,13 @@
             document.querySelector('[data-value="capsule-today"]').textContent = todayCapsule;
             document.querySelector('[data-value="capsule-goal"]').textContent = goalCapsule || '...';
             
+            // 更新進度條
             const updateProgressBar = (elementId, today, goal, isPositiveGoal = true) => {
                 const progressBar = document.getElementById(elementId);
                 if (!progressBar) return;
 
                 let percentage = goal > 0 ? (today / goal) * 100 : 0;
-                percentage = Math.min(percentage, 100); 
+                percentage = Math.min(percentage, 100); // 進度條最高 100%
 
                 progressBar.style.width = `${percentage}%`;
                 
@@ -551,9 +568,9 @@
                     if (percentage >= 100) {
                         progressBar.classList.add('progress-bar-green');
                     } else {
-                        progressBar.classList.add('progress-bar-yellow'); 
+                        progressBar.classList.add('progress-bar-yellow'); // 預設為黃色
                     }
-                } else { 
+                } else { // 熱量這種負向指標
                     if (today > goal && goal > 0) {
                         progressBar.classList.add('progress-bar-red');
                     } else if (today / goal >= 0.7) {
@@ -569,6 +586,7 @@
             updateProgressBar('exercise-progress', todayExercise, goalExercise, true);
             updateProgressBar('capsule-progress', todayCapsule, goalCapsule, true);
 
+            // 更新剩餘熱量
             const remainingEl = document.getElementById('calories-remaining');
             if (goalCalories > 0) {
                 const exerciseBurn = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
@@ -667,12 +685,14 @@
             document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
             document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
             
+            // 快速新增飲水按鈕事件
             document.querySelectorAll('.quick-add-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const waterInput = document.querySelector('[data-field="water_cc"]');
                     const currentWater = parseInt(waterInput.value) || 0;
                     const amountToAdd = parseInt(btn.dataset.amount);
                     waterInput.value = currentWater + amountToAdd;
+                    // 手動觸發 input 事件，以便觸發自動儲存和儀表板更新
                     waterInput.dispatchEvent(new Event('input', { bubbles: true }));
                 });
             });
@@ -705,8 +725,10 @@
 
                 // [MODIFIED] 新的權限檢查和介面控制
                 if (!isViewingAsAdmin) {
+                    // 這一步同時會觸發後端為新用戶建立檔案
                     const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
-                    if (!statusRes.isActive) { // isActive: false 代表服務已終止
+                    
+                    if (!statusRes.isActive) { // isActive: false 代表 Terminated 狀態
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('access-denied').classList.remove('hidden');
                         return;
@@ -716,19 +738,24 @@
                     }
                 }
 
+                // 載入完整的個人檔案 (包含後端可能剛建立的資料)
                 await loadProfileData(); 
                 
                 // [MODIFIED] 根據狀態顯示會籍期間和圖表按鈕
-                const statusCheck = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
+                // 此處檢查確保是 Active 狀態才顯示相關資訊
+                const statusCheck = isViewingAsAdmin ? await fetchAPI(`/api/check_status?userId=${userToLoad}`) : { status: document.getElementById('trial-banner').classList.contains('hidden') ? 'Active' : 'Trial' };
                 if (statusCheck.status === 'Active' && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
-                    const startDate = new Date(userProfileData.membership_start_date).toLocaleDateString('zh-TW');
-                    const endDate = new Date(userProfileData.expiry_timestamp).toLocaleDateString('zh-TW');
+                    const startDate = new Date(userProfileData.membership_start_date);
+                    const endDate = new Date(userProfileData.expiry_timestamp);
+                    const startDateStr = startDate.toLocaleDateString('zh-TW');
+                    const endDateStr = endDate.toLocaleDateString('zh-TW');
                     const displayDiv = document.getElementById('membership-dates-display');
-                    displayDiv.textContent = `會籍: ${startDate} - ${endDate}`;
+                    displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
                     displayDiv.classList.remove('hidden');
                     document.getElementById('course-range-btn').classList.remove('hidden');
                 }
                 
+                // 自動同步名稱邏輯
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
                     console.log('偵測到首次登入或名稱未同步，自動更新名稱...');
                     try {
