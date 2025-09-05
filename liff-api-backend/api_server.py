@@ -373,14 +373,13 @@ def get_all_users():
             start_date = user.get('membership_start_date')
             end_date = user.get('expiry_timestamp')
 
-            # [MODIFIED] 重寫後台狀態判斷邏輯，並新增「注意」狀態
+            # [MODIFIED] 修正並優化後台狀態判斷邏輯，確保優先級正確
             if term_date and term_date <= now_utc:
                 user['computed_status'] = 'Terminated'
+            elif start_date and start_date > now_utc:
+                user['computed_status'] = 'Attention' # 優先判斷未來會員
             elif end_date and end_date >= now_utc:
-                if start_date and start_date > now_utc:
-                    user['computed_status'] = 'Attention' # 新增的「注意」狀態
-                else:
-                    user['computed_status'] = 'Active'
+                user['computed_status'] = 'Active'
             else:
                 user['computed_status'] = 'Trial'
             
@@ -439,14 +438,13 @@ def update_admin_profile():
             start_date = updated_user.get('membership_start_date')
             end_date = updated_user.get('expiry_timestamp')
             
-            # [MODIFIED] 同步更新此處的狀態判斷邏輯
+            # [MODIFIED] 同步更新此處的狀態判斷邏輯，確保與會員列表一致
             if term_date and term_date <= now_utc_for_status:
                 updated_user['computed_status'] = 'Terminated'
+            elif start_date and start_date > now_utc_for_status:
+                updated_user['computed_status'] = 'Attention'
             elif end_date and end_date >= now_utc_for_status:
-                 if start_date and start_date > now_utc_for_status:
-                    updated_user['computed_status'] = 'Attention'
-                 else:
-                    updated_user['computed_status'] = 'Active'
+                updated_user['computed_status'] = 'Active'
             else:
                 updated_user['computed_status'] = 'Trial'
 
