@@ -42,11 +42,14 @@
             height: 100%; border-radius: 9999px;
             transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out;
         }
-        .progress-bar-green { background-color: #22c55e; }
-        .progress-bar-yellow { background-color: #f59e0b; }
+        /* [MODIFIED] 進度條顏色擴充 */
+        .progress-bar-gray { background-color: #d1d5db; }
         .progress-bar-red { background-color: #ef4444; }
+        .progress-bar-orange { background-color: #f97316; }
+        .progress-bar-blue { background-color: #3b82f6; }
+        .progress-bar-green { background-color: #22c55e; }
         
-        /* [NEW] Toast 提示樣式 */
+        /* [NEW] Toast 提示樣式 (此部分不變) */
         .toast {
             visibility: hidden; min-width: 150px; margin-left: -75px; background-color: #333;
             color: #fff; text-align: center; border-radius: 6px; padding: 10px 16px;
@@ -144,16 +147,13 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標 (kcal)</label>
-                    <div class="p-2 bg-gray-100 rounded-md mt-1">
-                        <p class="text-xs text-gray-600 mb-2">智慧估算器 (參考用):</p>
-                        <div class="flex items-center gap-2 text-sm">
-                            <select id="ex-type" class="block w-full border-gray-300 rounded-md py-1"><option value="3.5">快走</option><option value="7">慢跑</option><option value="2.5">瑜珈</option></select>
-                            <input type="number" id="ex-duration" class="block w-1/2 border-gray-300 rounded-md py-1" value="30">
-                            <span>分鐘</span>
-                            <p class="w-full text-right">≈ <span id="ex-estimate" class="font-bold">---</span> kcal</p>
-                        </div>
+                    <input type="number" id="exercise-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" placeholder="可點擊下方按鈕或手動輸入">
+                    <p id="exercise-goal-estimate" class="text-xs text-gray-500 mt-1 font-semibold"></p>
+                    <div class="p-2 bg-gray-100 rounded-md mt-2">
+                        <p class="text-xs text-gray-600 mb-2">點擊下方按鈕，快速累加運動量來設定目標：</p>
+                        <div id="profile-quick-add-exercise" class="flex flex-wrap gap-2">
+                           </div>
                     </div>
-                    <input type="number" id="exercise-goal" class="profile-input mt-2 block w-full border border-gray-300 rounded-md py-2 px-3" placeholder="請在此輸入您的每日目標">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">設定每日燃脂膠囊目標 (包)</label>
@@ -261,22 +261,21 @@
 
             <div id="trends-tab" class="hidden space-y-4">
                  <div class="bg-white p-4 rounded-lg shadow">
-                     <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
-                         <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                         <button id="course-range-btn" onclick="updateChartRange('course', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">本次課程</button>
-                         <button onclick="updateChartRange('28days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">28天課程</button>
-                         <button onclick="updateChartRange('this_month', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">本月</button>
-                         <div class="flex items-center gap-1">
-                             <label for="start-date-picker" class="text-xs">自訂開始日:</label>
-                             <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                         </div>
-                     </div>
-                     <canvas id="trendsChart"></canvas>
-                     <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
-                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
-                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
-                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
-                     </div>
+                      <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
+                           <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                           <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
+                           <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
+                           <div class="flex items-center gap-1">
+                                <label for="start-date-picker" class="text-xs">自訂開始日:</label>
+                                <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                           </div>
+                      </div>
+                      <canvas id="trendsChart"></canvas>
+                      <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
+                           <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
+                           <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
+                           <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
+                      </div>
                  </div>
             </div>
         </div>
@@ -307,13 +306,15 @@
         let autosaveTimer = null;
         let trendsChart = null;
         let profileAutosaveTimer = null; 
-        let currentExerciseSession = []; // [NEW] 累加運動的暫存清單
+        let currentExerciseSession = []; // 日誌的運動暫存
+        let profileExerciseSession = []; // [NEW] 個人檔案設定目標用的運動暫存
 
         const EXERCISE_METS = { '跑步': 8.0, '快走': 4.3, '散步': 3.5, '瑜珈': 2.5 };
+        // [MODIFIED] 更新運動快捷鈕設定
         const exercisePresets = [
             { type: '跑步', duration: 10 }, 
-            { type: '快走', duration: 15 }, 
-            { type: '散步', duration: 15 },
+            { type: '快走', duration: 10 }, 
+            { type: '散步', duration: 10 },
         ];
         
         // --- 2. 輔助函式 ---
@@ -335,7 +336,6 @@
             return text ? JSON.parse(text) : {};
         }
 
-        // [NEW] Toast 提示函式
         function showToast(message) {
             const toast = document.getElementById('toast');
             if (!toast) return;
@@ -365,7 +365,7 @@
                     method: 'POST',
                     body: JSON.stringify({ data: profileData })
                 });
-                showToast('✓ 已儲存'); // 使用 Toast 提示
+                showToast('✓ 已儲存'); 
                 if (callback) callback();
             } catch (error) {
                 console.error("儲存個人檔案失敗:", error);
@@ -396,6 +396,9 @@
                 document.getElementById('capsule-goal').value = userProfileData.capsule_goal || '';
                 document.getElementById('personal-notes').value = userProfileData.personal_notes || '';
                 document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${userProfileData.last_updated}` : '';
+
+                // [MODIFIED] 核心錯誤修正：確保載入時，目標熱量值被正確填入隱藏 input
+                document.getElementById('target-calories').value = userProfileData.target_calories || '';
 
                 updateProfileCalculations();
 
@@ -450,7 +453,8 @@
                         if (el) el.value = data[key] || '';
                     });
                 }
-            } catch (error) {
+            } catch (error)
+            {
                 console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
             } finally {
                 currentExerciseSession = []; // 切換日期時清空運動暫存
@@ -476,6 +480,7 @@
             await loadLogDataForDate(currentDate);
         }
         
+        // [MODIFIED] 更新圖表篩選邏輯
         async function updateChartRange(range, element = null) {
             document.querySelectorAll('.range-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-emerald-500', 'text-white');
@@ -483,14 +488,22 @@
             });
              if (element) {
                  if (element.tagName === 'BUTTON') {
-                    element.classList.add('active', 'bg-emerald-500', 'text-white');
-                    element.classList.remove('bg-gray-200');
-                    document.getElementById('start-date-picker').value = '';
+                     element.classList.add('active', 'bg-emerald-500', 'text-white');
+                     element.classList.remove('bg-gray-200');
+                     document.getElementById('start-date-picker').value = '';
                  }
              }
+            
             let finalRange = range;
-            if (range === 'course' && userProfileData.membership_start_date) {
-                finalRange = userProfileData.membership_start_date.split('T')[0];
+            if (range === 'membership_period') {
+                if (userProfileData.membership_start_date) {
+                    // 傳遞起始日期給後端，後端處理28天範圍
+                    finalRange = userProfileData.membership_start_date.split('T')[0];
+                } else {
+                    // 若無會籍日，則 fallback 到最近7天
+                    finalRange = '7days';
+                    document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
+                }
             }
             await renderChart(finalRange);
         }
@@ -514,24 +527,14 @@
                 document.getElementById('calc-footnote').style.display = 'none';
             }
         }
-
-        function estimateExerciseCalories() {
-            const weight = parseFloat(document.getElementById('profile-weight').value) || 60;
-            const met = parseFloat(document.getElementById('ex-type').value);
-            const duration = parseFloat(document.getElementById('ex-duration').value);
-            if(weight > 0 && met > 0 && duration > 0) {
-                const calories = Math.round(met * weight * (duration / 60));
-                document.getElementById('ex-estimate').textContent = calories;
-            } else {
-                document.getElementById('ex-estimate').textContent = '---';
-            }
-        }
+        
+        // [MODIFIED] 此函式被新的個人化計算取代，故移除
+        // function estimateExerciseCalories() { ... }
 
         function updateProfileCalculations() {
             const weight = parseFloat(document.getElementById('profile-weight').value);
             if (weight > 0) {
                 document.getElementById('water-suggestion').textContent = `依您的體重，建議飲水量為 ${Math.round(weight * 35)} c.c.`;
-                estimateExerciseCalories();
             } else {
                 document.getElementById('water-suggestion').textContent = '';
             }
@@ -543,7 +546,7 @@
             if (height > 0 && weight > 0 && age > 0) {
                 let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
                 bmr = Math.round(bmr);
-                userProfileData.bmr = bmr; // [NEW] Save BMR for calculations
+                userProfileData.bmr = bmr;
                 let tdee = Math.round(bmr * activityLevel);
                 document.getElementById('bmr-display').textContent = `${bmr} kcal`;
                 document.getElementById('tdee-display').textContent = `${tdee} kcal`;
@@ -586,9 +589,26 @@
             }
         }
         
+        // [NEW] 取得進度條顏色的輔助函式
+        function getProgressBarColorClass(percentage, isReversed = false) {
+            if (percentage === 0) return 'progress-bar-gray';
+            
+            if (isReversed) { // 熱量攝取邏輯 (越低越好)
+                if (percentage >= 100) return 'progress-bar-red';
+                if (percentage >= 95) return 'progress-bar-orange';
+                if (percentage >= 90) return 'progress-bar-blue';
+                return 'progress-bar-green';
+            } else { // 一般邏輯 (越高越好)
+                if (percentage >= 100) return 'progress-bar-green';
+                if (percentage >= 67) return 'progress-bar-blue';
+                if (percentage >= 34) return 'progress-bar-orange';
+                return 'progress-bar-red';
+            }
+        }
+
+        // [MODIFIED] 更新儀表板，整合新的進度條顏色邏輯
         function updateGoalDashboard() {
-            userProfileData.target_calories = document.getElementById('target-calories').value; // [FIX] Sync from input
-            const goalCalories = parseInt(userProfileData.target_calories) || 0;
+            const goalCalories = parseInt(document.getElementById('target-calories').value) || 0; // 直接從input讀取最新值
             const goalWater = parseInt(userProfileData.water_goal) || 0;
             const goalExercise = parseInt(userProfileData.exercise_goal) || 0;
             const goalCapsule = parseInt(userProfileData.capsule_goal) || 0;
@@ -606,26 +626,23 @@
             document.querySelector('[data-value="capsule-today"]').textContent = todayCapsule;
             document.querySelector('[data-value="capsule-goal"]').textContent = goalCapsule || '...';
             
-            const updateProgressBar = (elementId, today, goal, isPositiveGoal = true) => {
+            const updateProgressBar = (elementId, today, goal, isReversed = false) => {
                 const progressBar = document.getElementById(elementId);
                 if (!progressBar) return;
                 let percentage = goal > 0 ? (today / goal) * 100 : 0;
-                percentage = Math.min(percentage, 100);
-                progressBar.style.width = `${percentage}%`;
-                progressBar.classList.remove('progress-bar-green', 'progress-bar-yellow', 'progress-bar-red');
-                if (isPositiveGoal) {
-                    if (percentage >= 100) progressBar.classList.add('progress-bar-green');
-                    else progressBar.classList.add('progress-bar-yellow');
-                } else {
-                    if (today > goal && goal > 0) progressBar.classList.add('progress-bar-red');
-                    else if (today / goal >= 0.7) progressBar.classList.add('progress-bar-yellow');
-                    else progressBar.classList.add('progress-bar-green');
-                }
+                
+                const colorClass = getProgressBarColorClass(percentage, isReversed);
+                progressBar.style.width = `${Math.min(percentage, 100)}%`; // 長度最多100%
+                
+                progressBar.classList.remove('progress-bar-gray', 'progress-bar-red', 'progress-bar-orange', 'progress-bar-blue', 'progress-bar-green');
+                progressBar.classList.add(colorClass);
             };
-            updateProgressBar('calories-progress', todayCalories, goalCalories, false);
-            updateProgressBar('water-progress', todayWater, goalWater, true);
-            updateProgressBar('exercise-progress', todayExercise, goalExercise, true);
-            updateProgressBar('capsule-progress', todayCapsule, goalCapsule, true);
+
+            updateProgressBar('calories-progress', todayCalories, goalCalories, true); // true 代表是反向邏輯
+            updateProgressBar('water-progress', todayWater, goalWater, false);
+            updateProgressBar('exercise-progress', todayExercise, goalExercise, false);
+            updateProgressBar('capsule-progress', todayCapsule, goalCapsule, false);
+
             const remainingEl = document.getElementById('calories-remaining');
             if (goalCalories > 0) {
                 const exerciseBurn = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
@@ -691,14 +708,14 @@
                         datasets: [
                             { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true },
                             { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: false, yAxisID: 'yKcal' },
-                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: false, yAxisID: 'yKcal' }, // [MODIFIED]
-                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: false, yAxisID: 'yKcal' } // [MODIFIED]
+                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: false, yAxisID: 'yKcal' }, 
+                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: false, yAxisID: 'yKcal' }
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        aspectRatio: 1, // [MODIFIED]
+                        aspectRatio: 1, 
                         scales: {
                             yWeight: { 
                                 type: 'linear', 
@@ -707,7 +724,7 @@
                                 min: minWeight,
                                 max: maxWeight,
                                 ticks: {
-                                    stepSize: 0.1 // [MODIFIED]
+                                    stepSize: 0.1
                                 }
                             },
                             yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.' }, grid: { drawOnChartArea: false } }
@@ -722,7 +739,6 @@
         }
 
         // --- 5. 應用程式啟動流程 ---
-        // [NEW] 清除輸入框的通用函式
         function clearInput(fieldName, defaultValue = '') {
             const input = document.querySelector(`[data-field="${fieldName}"]`);
             if (input) {
@@ -737,6 +753,52 @@
             clearInput('exercise_kcal', '');
         }
 
+        // [NEW] 運動目標估算與快捷鈕相關函式
+        function updateExerciseGoalCalculations() {
+            const goalInput = document.getElementById('exercise-goal');
+            const estimateP = document.getElementById('exercise-goal-estimate');
+            const goalKcal = parseInt(goalInput.value) || 0;
+            if (goalKcal > 0) {
+                const weeklyLoss = ((goalKcal * 7) / 7700).toFixed(2);
+                estimateP.textContent = `約等於每週可多消耗 ${weeklyLoss} 公斤`;
+            } else {
+                estimateP.textContent = '';
+            }
+        }
+
+        function handleProfileExerciseQuickAdd(event) {
+            const target = event.target.closest('button');
+            if (!target) return;
+            if (!userProfileData.bmr) {
+                alert("請先填寫完整的身高、體重、年齡和性別，才能使用此功能喔！");
+                return;
+            }
+            const type = target.dataset.type;
+            const duration = parseInt(target.dataset.duration);
+            const existing = profileExerciseSession.find(ex => ex.type === type);
+            if (existing) {
+                existing.duration += duration;
+            } else {
+                profileExerciseSession.push({ type, duration });
+            }
+            let totalCalories = 0;
+            profileExerciseSession.forEach(ex => {
+                const met = EXERCISE_METS[ex.type];
+                totalCalories += Math.round((userProfileData.bmr / 24) * met * (ex.duration / 60));
+            });
+            const goalInput = document.getElementById('exercise-goal');
+            goalInput.value = totalCalories;
+            goalInput.dispatchEvent(new Event('input', { bubbles: true })); // 觸發更新
+        }
+        
+        function renderProfileQuickExerciseButtons() {
+            const container = document.getElementById('profile-quick-add-exercise');
+            if (!container) return;
+            container.innerHTML = exercisePresets.map(item => 
+                `<button class="quick-add-btn" data-type="${item.type}" data-duration="${item.duration}">${item.type} +${item.duration}分</button>`
+            ).join('');
+        }
+        
         function setupEventListeners() {
             document.querySelectorAll('.profile-input').forEach(el => {
                 el.addEventListener('input', () => {
@@ -751,10 +813,12 @@
             document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
             document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
             document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value, e.target));
-            document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
-            document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
             
-            document.querySelectorAll('.quick-add-btn').forEach(btn => {
+            // [NEW] 運動目標設定的事件監聽
+            document.getElementById('exercise-goal').addEventListener('input', updateExerciseGoalCalculations);
+            document.getElementById('profile-quick-add-exercise').addEventListener('click', handleProfileExerciseQuickAdd);
+
+            document.querySelectorAll('.quick-add-btn[data-amount]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const waterInput = document.querySelector('[data-field="water_cc"]');
                     const currentWater = parseInt(waterInput.value) || 0;
@@ -764,7 +828,6 @@
                 });
             });
 
-            // [NEW] 快速新增運動按鈕事件 (累加版)
             document.getElementById('quick-add-exercise').addEventListener('click', (event) => {
                 const target = event.target.closest('button');
                 if (!target) return;
@@ -772,7 +835,6 @@
                 const type = target.dataset.type;
                 const duration = parseInt(target.dataset.duration);
                 
-                // 檢查個人資料是否完整
                 const bmr = userProfileData.bmr;
                 if (!bmr) {
                     alert("請先到「個人檔案」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
@@ -780,7 +842,6 @@
                     return;
                 }
 
-                // 檢查運動是否已在清單中
                 const existingExercise = currentExerciseSession.find(ex => ex.type === type);
                 if (existingExercise) {
                     existingExercise.duration += duration;
@@ -790,7 +851,6 @@
                 updateExerciseInputs();
             });
 
-            // [NEW] 頁尾按鈕事件
             document.getElementById('get-user-id-btn').addEventListener('click', () => {
                 if (operatorId) {
                     navigator.clipboard.writeText(operatorId).then(() => {
@@ -803,7 +863,6 @@
             });
         }
         
-        // [NEW] 渲染快速運動按鈕 (累加版)
         function renderQuickExerciseButtons() {
             const container = document.getElementById('quick-add-exercise');
             if (!container) return;
@@ -812,13 +871,12 @@
             ).join('');
         }
         
-        // [NEW] 更新運動輸入框的函式
         function updateExerciseInputs() {
             let totalCalories = 0;
             let textParts = [];
 
             const bmr = userProfileData.bmr;
-            if (!bmr) return; // 如果沒有 BMR，無法計算
+            if (!bmr) return; 
 
             currentExerciseSession.forEach(ex => {
                 const met = EXERCISE_METS[ex.type];
@@ -835,7 +893,6 @@
             textInput.value = textParts.join('、');
             kcalInput.value = totalCalories > 0 ? totalCalories : '';
             
-            // 手動觸發 input 事件，以更新儀表板和觸發自動儲存
             textInput.dispatchEvent(new Event('input', { bubbles: true }));
             kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
@@ -875,11 +932,11 @@
                         document.getElementById('trial-banner').classList.remove('hidden');
                     }
                 }
-
+                
+                // [MODIFIED] 確保資料載入 -> 介面渲染的順序
                 await loadProfileData(); 
                 
-                // [FIX] 修正會籍期間顯示邏輯
-                if (!document.getElementById('trial-banner').classList.contains('hidden') === false && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
+                if (userProfileData.status === 'Active' && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
                     const startDate = new Date(userProfileData.membership_start_date);
                     const endDate = new Date(userProfileData.expiry_timestamp);
                     const startDateStr = startDate.toLocaleDateString('zh-TW');
@@ -887,6 +944,9 @@
                     const displayDiv = document.getElementById('membership-dates-display');
                     displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
                     displayDiv.classList.remove('hidden');
+
+                    // [NEW] 如果有會籍，顯示圖表的會籍按鈕
+                    document.getElementById('membership-range-btn').classList.remove('hidden');
                 }
                 
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
@@ -905,19 +965,20 @@
                      const adminNotesContent = document.getElementById('admin-notes-content');
                      const adminNotesDisplay = document.getElementById('admin-notes-display');
                      if(userProfileData.admin_notes) {
-                        adminNotesContent.textContent = userProfileData.admin_notes;
-                        adminNotesDisplay.classList.remove('hidden');
+                         adminNotesContent.textContent = userProfileData.admin_notes;
+                         adminNotesDisplay.classList.remove('hidden');
                      }
                 }
                 
                 renderQuickExerciseButtons();
+                renderProfileQuickExerciseButtons(); // [NEW] 渲染個人檔案的運動按鈕
 
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
                 document.getElementById('log-tab').classList.remove('hidden');
                 document.getElementById('calc-footnote').style.display = 'block';
                 
-                await loadLogDataForDate(currentDate);
                 await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                await loadLogDataForDate(currentDate); // 確保日曆渲染完再載入日誌
                 setupEventListeners();
 
             } catch (error) {
