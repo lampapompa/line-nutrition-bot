@@ -38,8 +38,8 @@ def init_db():
                 exercise_goal INTEGER, capsule_goal INTEGER,
                 admin_notes TEXT, status VARCHAR(50),
                 expiry_timestamp TIMESTAMPTZ,
-                membership_start_date TIMESTAMPTZ,      -- [NEW] 會員起日
-                service_termination_date TIMESTAMPTZ   -- [NEW] 服務終止日
+                membership_start_date TIMESTAMPTZ,   -- [NEW] 會員起日
+                service_termination_date TIMESTAMPTZ    -- [NEW] 服務終止日
             );
         ''')
         cur.execute('''
@@ -285,21 +285,51 @@ def get_trends():
     is_active, status = check_user_active(user_id)
     if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
 
-    range_param = request.args.get('range', '7days'); today = datetime.now().date()
-    if range_param == 'this_month': start_date = today.replace(day=1)
-    elif range_param == '28days': start_date = today - timedelta(days=27)
+    # [MODIFIED] 更新日期區間處理邏輯以支援新的篩選條件
+    range_param = request.args.get('range', '7days')
+    today = datetime.now(TAIPEI_TZ).date()
+    end_date = today
+
+    if range_param == '14days':
+        start_date = today - timedelta(days=13)
+    elif range_param == '28days': # 舊版的相容
+        start_date = today - timedelta(days=27)
     else:
-        try: start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
-        except ValueError: start_date = today - timedelta(days=6)
+        try:
+            # 處理 'YYYY-MM-DD' 格式，用於 "28天會籍" 和 "自訂日期"
+            start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
+            # 確保結束日期不會超過今天
+            potential_end_date = start_date + timedelta(days=27)
+            end_date = min(potential_end_date, today)
+        except ValueError:
+            # 預設為 '7days'
+            start_date = today - timedelta(days=6)
+
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('''SELECT log_date, daily_weight, COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories, water_cc, exercise_kcal FROM daily_logs WHERE user_id = %s AND log_date BETWEEN %s AND %s ORDER BY log_date ASC''', (user_id, start_date, today))
+        cur.execute('''
+            SELECT log_date, daily_weight, 
+                   COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories, 
+                   water_cc, exercise_kcal 
+            FROM daily_logs 
+            WHERE user_id = %s AND log_date BETWEEN %s AND %s 
+            ORDER BY log_date ASC
+        ''', (user_id, start_date, end_date))
         logs = cur.fetchall()
     conn.close()
-    labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range((today - start_date).days + 1)]
+
+    total_days = (end_date - start_date).days + 1
+    labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range(total_days)]
     logs_dict = {log['log_date'].strftime('%Y-%m-%d'): log for log in logs}
-    trend_data = {'weight': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('daily_weight') for i in range(len(labels))], 'calories': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('calories') for i in range(len(labels))], 'water': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('water_cc') for i in range(len(labels))], 'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('exercise_kcal') for i in range(len(labels))]}
+    
+    trend_data = {
+        'weight': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('daily_weight') for i in range(total_days)],
+        'calories': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('calories') for i in range(total_days)],
+        'water': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('water_cc') for i in range(total_days)],
+        'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('exercise_kcal') for i in range(total_days)]
+    }
     return jsonify({ 'labels': labels, **trend_data })
+
 
 # --- 管理員專用 API ---
 @app.route('/api/admin/check', methods=['GET'])
@@ -336,7 +366,7 @@ def get_all_users():
             # [MODIFIED] 格式化所有日期欄位
             date_fields_to_format = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
             for field in date_fields_to_format:
-                 if user.get(field):
+                if user.get(field):
                     user[field] = user[field].astimezone(TAIPEI_TZ).isoformat()
 
             users.append(user)
@@ -402,7 +432,7 @@ def update_admin_profile():
 
             date_fields_to_format_return = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
             for field in date_fields_to_format_return:
-                 if updated_user.get(field):
+                if updated_user.get(field):
                     updated_user[field] = updated_user[field].astimezone(TAIPEI_TZ).isoformat()
     
     conn.close()
