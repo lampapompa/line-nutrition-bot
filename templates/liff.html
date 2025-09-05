@@ -1158,4 +1158,22 @@
 
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
                 document.getElementById('log-tab').classList.remove('hidden');
-                document.getElementById('calc-footnote').style.
+                document.getElementById('calc-footnote').style.display = 'block';
+                
+                await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                await loadLogDataForDate(currentDate);
+                setupEventListeners();
+
+            } catch (error) {
+                console.error("初始化失敗", error);
+                document.getElementById('loading-text').textContent = `初始化失敗: ${error.message}`;
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+            }
+        }
+        
+        main();
+    </script>
+</body>
+</html>
