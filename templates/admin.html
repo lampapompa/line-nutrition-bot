@@ -15,15 +15,6 @@
         .toast.show {
             visibility: visible; opacity: 1; transition: opacity 0.5s linear;
         }
-        input[type="datetime-local"].date-input-placeholder::before {
-            content: attr(placeholder);
-            display: block;
-            color: #9ca3af;
-        }
-        input[type="datetime-local"].date-input-placeholder:focus::before,
-        input[type="datetime-local"].date-input-placeholder:valid::before {
-            display: none;
-        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -105,12 +96,16 @@
 
             let statusClass = '';
             let statusText = '';
+            // [MODIFIED] 新增「注意」狀態的判斷與樣式
             if (user.computed_status === 'Active') {
                 statusClass = 'bg-green-200 text-green-800';
                 statusText = '有效';
             } else if (user.computed_status === 'Trial') {
                 statusClass = 'bg-blue-200 text-blue-800';
                 statusText = '試用';
+            } else if (user.computed_status === 'Attention') {
+                statusClass = 'bg-orange-200 text-orange-800';
+                statusText = '注意';
             } else if (user.computed_status === 'Terminated') {
                 statusClass = 'bg-red-200 text-red-800';
                 statusText = '已終止';
@@ -119,6 +114,7 @@
                 statusText = '未知';
             }
 
+            // [MODIFIED] 將日期輸入框改為標準的 datetime-local，解決手機版問題
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
                     <td class="py-3 px-4 pt-5">
@@ -140,26 +136,23 @@
                     <td class="py-3 px-6 space-y-2">
                         <div class="flex items-center space-x-2">
                             <label class="text-gray-600 w-20 text-right">會員起日:</label>
-                            <input type="text" value="${startValue.replace('T', ' ')}" placeholder="未設定"
-                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                            <input type="datetime-local" value="${startValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'membershipStartDate', this.value)"
-                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                                   class="border rounded px-1 py-0.5 text-xs w-40">
                             <button onclick="handleDateUpdate('${user.user_id}', 'membershipStartDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
                         </div>
                         <div class="flex items-center space-x-2">
                             <label class="text-gray-600 w-20 text-right">會員迄日:</label>
-                            <input type="text" value="${endValue.replace('T', ' ')}" placeholder="未設定"
-                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                            <input type="datetime-local" value="${endValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'expiryTimestamp', this.value)"
-                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                                   class="border rounded px-1 py-0.5 text-xs w-40">
                             <button onclick="handleDateUpdate('${user.user_id}', 'expiryTimestamp', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
                         </div>
                         <div class="flex items-center space-x-2">
                             <label class="text-gray-600 w-20 text-right">服務終止日:</label>
-                            <input type="text" value="${termValue.replace('T', ' ')}" placeholder="未設定"
-                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                            <input type="datetime-local" value="${termValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', this.value)"
-                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                                   class="border rounded px-1 py-0.5 text-xs w-40">
                             <button onclick="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
                         </div>
                         <div class="flex items-center space-x-2 pt-2">
@@ -178,15 +171,15 @@
         }
 
         function updateRowUI(userId, updatedUserData) {
-              const rowElement = document.getElementById(`user-row-${userId}`);
-              if(rowElement) {
-                  const oldDisplayName = rowElement.querySelector('a').textContent.trim();
-                  const mergedUser = {
-                      ...updatedUserData,
-                      display_name: updatedUserData.display_name || oldDisplayName
-                  };
-                  rowElement.outerHTML = renderUserRow(mergedUser);
-              }
+             const rowElement = document.getElementById(`user-row-${userId}`);
+             if(rowElement) {
+                 const oldDisplayName = rowElement.querySelector('a').textContent.trim();
+                 const mergedUser = {
+                     ...updatedUserData,
+                     display_name: updatedUserData.display_name || oldDisplayName
+                 };
+                 rowElement.outerHTML = renderUserRow(mergedUser);
+             }
         }
         
         async function handleFieldUpdate(userId, fieldName, value) {
@@ -196,7 +189,7 @@
         }
 
         async function handleDateUpdate(userId, fieldName, value) {
-            if (value === null || value) {
+            if (value === null || value !== undefined) {
                 const isoValue = value ? new Date(value).toISOString() : null;
                 const payload = { [fieldName]: isoValue };
                 const updatedUser = await updateUser(userId, payload);
