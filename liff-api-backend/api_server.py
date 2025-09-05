@@ -236,6 +236,12 @@ def handle_profile():
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
+                # --- MODIFICATION START ---
+                # [新增] 為了讓 liff.html 能正確判斷狀態，這裡也加入 status 欄位
+                _is_active, status_string = check_user_active(user_id)
+                profile_dict['status'] = status_string
+                # --- MODIFICATION END ---
+                
                 return jsonify(profile_dict)
             
             return jsonify({})
