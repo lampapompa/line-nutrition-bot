@@ -15,6 +15,16 @@
         .toast.show {
             visibility: visible; opacity: 1; transition: opacity 0.5s linear;
         }
+        /* 讓日期輸入框在未被點擊時看起來像普通文字 */
+        input[type="datetime-local"].date-input-placeholder::before {
+            content: attr(placeholder);
+            display: block;
+            color: #9ca3af; /* gray-400 */
+        }
+        input[type="datetime-local"].date-input-placeholder:focus::before,
+        input[type="datetime-local"].date-input-placeholder:valid::before {
+            display: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -36,9 +46,7 @@
                         <th class="py-3 px-4 text-left">LINE 名稱</th>
                         <th class="py-3 px-4 text-left">管理員暱稱</th>
                         <th class="py-3 px-4 text-left">狀態</th>
-                        <th class="py-3 px-4 text-left">會員起日</th>
-                        <th class="py-3 px-4 text-left">會員迄日</th>
-                        <th class="py-3 px-4 text-left min-w-[320px]">權限設定</th>
+                        <th class="py-3 px-6 text-left min-w-[550px]">權限設定</th>
                         <th class="py-3 px-4 text-left">教練備註</th>
                     </tr>
                 </thead>
@@ -86,23 +94,21 @@
                 return null;
             }
         }
-
+        
+        // [MODIFIED] 全新渲染會員列的函式
         function renderUserRow(user) {
-            // [MODIFIED] 日期處理邏輯
-            const startDate = user.membership_start_date ? new Date(user.membership_start_date) : null;
-            const startDateText = startDate ? startDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
-            const startValue = user.membership_start_date ? user.membership_start_date.substring(0, 16) : '';
-
-            const expiryDate = user.expiry_timestamp ? new Date(user.expiry_timestamp) : null;
-            const expiryText = expiryDate ? expiryDate.toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '---';
-            
             const displayName = user.display_name || '(新用戶)';
             const adminNickname = user.admin_nickname || '';
 
-            // [MODIFIED] 新的狀態與顏色判斷邏輯
+            // 處理日期格式，以便放入 datetime-local 輸入框
+            const formatForInput = (isoString) => isoString ? isoString.substring(0, 16) : '';
+            const startValue = formatForInput(user.membership_start_date);
+            const endValue = formatForInput(user.expiry_timestamp);
+            const termValue = formatForInput(user.service_termination_date);
+
+            // 狀態與顏色判斷邏輯
             let statusClass = '';
             let statusText = '';
-
             if (user.computed_status === 'Active') {
                 statusClass = 'bg-green-200 text-green-800';
                 statusText = '有效';
@@ -112,46 +118,63 @@
             } else if (user.computed_status === 'Terminated') {
                 statusClass = 'bg-red-200 text-red-800';
                 statusText = '已終止';
-            } else { // Fallback for any other case
+            } else {
                 statusClass = 'bg-gray-200 text-gray-800';
                 statusText = '未知';
             }
 
+            // [MODIFIED] 全新的 HTML 結構
             return `
-                <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="py-3 px-4">
+                <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
+                    <td class="py-3 px-4 pt-5">
                         <a href="/liff?targetUserId=${user.user_id}&operatorId=${currentAdminId}" target="_blank" class="text-blue-600 hover:underline" title="點擊以管理員身份查看此會員的日誌">
                             ${displayName}
                         </a>
                     </td>
-                    <td class="py-3 px-4">
+                    <td class="py-3 px-4 pt-5">
                         <input type="text" value="${adminNickname}" 
-                               onchange="handleNicknameUpdate('${user.user_id}', this.value)"
+                               onchange="handleFieldUpdate('${user.user_id}', 'adminNickname', this.value)"
                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
                                placeholder="設定暱稱...">
                     </td>
-                    <td class="py-3 px-4">
+                    <td class="py-3 px-4 pt-5">
                         <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs ${statusClass}">
                             ${statusText}
                         </span>
                     </td>
-                    <td class="py-3 px-4 text-gray-600">
-                        <input type="datetime-local" value="${startValue}" 
-                               onchange="handleStartDateUpdate('${user.user_id}', this.value)" 
-                               class="border rounded px-1 py-0.5 text-xs">
+                    <td class="py-3 px-6 space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <label class="text-gray-600 w-20 text-right">會員起日:</label>
+                            <input type="text" value="${startValue.replace('T', ' ')}" placeholder="未設定"
+                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                                   onchange="handleDateUpdate('${user.user_id}', 'membershipStartDate', this.value)"
+                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                            <button onclick="handleDateUpdate('${user.user_id}', 'membershipStartDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-gray-600 w-20 text-right">會員迄日:</label>
+                            <input type="text" value="${endValue.replace('T', ' ')}" placeholder="未設定"
+                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                                   onchange="handleDateUpdate('${user.user_id}', 'expiryTimestamp', this.value)"
+                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                            <button onclick="handleDateUpdate('${user.user_id}', 'expiryTimestamp', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-gray-600 w-20 text-right">服務終止日:</label>
+                            <input type="text" value="${termValue.replace('T', ' ')}" placeholder="未設定"
+                                   onclick="this.type='datetime-local'; this.classList.remove('date-input-placeholder')" onblur="if(!this.value)this.type='text'"
+                                   onchange="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', this.value)"
+                                   class="date-input-placeholder border rounded px-1 py-0.5 text-xs w-40">
+                            <button onclick="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                        </div>
+                        <div class="flex items-center space-x-2 pt-2">
+                            <div class="w-20"></div>
+                            <button onclick="handleTerminate('${user.user_id}')" class="bg-red-600 text-white px-3 py-1 text-xs rounded hover:bg-red-700 transition-colors">立即終止服務</button>
+                        </div>
                     </td>
-                    <td class="py-3 px-4 text-gray-600">${expiryText}</td>
-                    <td class="py-3 px-4 space-x-1">
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '1h')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+1h</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '1d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+1d</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '7d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+7d</button>
-                        <button onclick="handleExpiryUpdate('${user.user_id}', '28d')" class="bg-blue-500 text-white px-2 py-1 text-xs rounded hover:bg-blue-600 transition-colors">+28d</button>
-                        <input type="datetime-local" onchange="handleExpiryUpdate('${user.user_id}', 'custom', this.value)" class="border rounded px-1 py-0.5 text-xs">
-                        <button onclick="handleExpiryUpdate('${user.user_id}', 'clear')" class="bg-gray-500 text-white px-2 py-1 text-xs rounded hover:bg-gray-600 transition-colors">清除</button>
-                    </td>
-                    <td class="py-3 px-4">
+                    <td class="py-3 px-4 pt-5">
                         <input type="text" value="${user.admin_notes || ''}" 
-                               onchange="handleNotesUpdate('${user.user_id}', this.value)"
+                               onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
                                placeholder="新增備註...">
                     </td>
@@ -162,7 +185,6 @@
         function updateRowUI(userId, updatedUserData) {
               const rowElement = document.getElementById(`user-row-${userId}`);
               if(rowElement) {
-                  // Merge old data with new data to prevent missing fields
                   const oldDisplayName = rowElement.querySelector('a').textContent.trim();
                   const mergedUser = {
                       ...updatedUserData,
@@ -171,37 +193,31 @@
                   rowElement.outerHTML = renderUserRow(mergedUser);
               }
         }
-
-        async function handleExpiryUpdate(userId, action, customValue = null) {
-            const payload = { expiryAction: action };
-            if (action === 'custom') {
-                if (!customValue) return;
-                payload.customExpiry = new Date(customValue).toISOString();
-            }
+        
+        // [NEW] 通用的欄位更新函式
+        async function handleFieldUpdate(userId, fieldName, value) {
+            const payload = { [fieldName]: value };
             const updatedUser = await updateUser(userId, payload);
-            if (updatedUser) {
-                updateRowUI(userId, updatedUser);
+            if (updatedUser) updateRowUI(userId, updatedUser);
+        }
+
+        // [NEW] 通用的日期更新函式
+        async function handleDateUpdate(userId, fieldName, value) {
+            // 如果 value 是 null (清除)，或是有值但不是空字串
+            if (value === null || value) {
+                const isoValue = value ? new Date(value).toISOString() : null;
+                const payload = { [fieldName]: isoValue };
+                const updatedUser = await updateUser(userId, payload);
+                if (updatedUser) updateRowUI(userId, updatedUser);
             }
         }
         
-        // [NEW] 新增處理會員起日更新的函式
-        async function handleStartDateUpdate(userId, value) {
-            if (!value) return; // 如果清空日期則不動作
-            const payload = { membershipStartDate: new Date(value).toISOString() };
-            const updatedUser = await updateUser(userId, payload);
-            if (updatedUser) {
-                updateRowUI(userId, updatedUser);
+        // [NEW] 終止服務函式
+        async function handleTerminate(userId) {
+            if (confirm(`確定要立即終止這位會員的所有服務嗎？\n此操作無法復原，會員將立即無法登入。`)) {
+                const updatedUser = await updateUser(userId, { terminate: true });
+                if (updatedUser) updateRowUI(userId, updatedUser);
             }
-        }
-
-        async function handleNotesUpdate(userId, notes) {
-            const updatedUser = await updateUser(userId, { adminNotes: notes });
-            if (updatedUser) updateRowUI(userId, updatedUser);
-        }
-
-        async function handleNicknameUpdate(userId, nickname) {
-            const updatedUser = await updateUser(userId, { adminNickname: nickname });
-            if (updatedUser) updateRowUI(userId, updatedUser);
         }
 
         async function main() {
