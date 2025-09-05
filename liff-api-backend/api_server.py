@@ -62,6 +62,18 @@ def init_db():
             );
         ''')
         
+        # [NEW] 新增：建立使用者自訂運動資料表
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS user_exercises (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                slot_index INTEGER NOT NULL,
+                exercise_name VARCHAR(255),
+                kcal INTEGER,
+                UNIQUE(user_id, slot_index)
+            );
+        ''')
+
         # [MODIFIED] 檢查並新增所有需要的欄位
         profile_columns_to_check = {
             'admin_nickname': 'VARCHAR(255)',
@@ -75,7 +87,7 @@ def init_db():
             if col not in existing_cols:
                 cur.execute(f"ALTER TABLE user_profiles ADD COLUMN {col} {data_type};")
                 print(f"新增 {col} 欄位至 user_profiles")
-        
+
         # [NEW] 檢查並升級 last_updated 欄位的資料型態
         cur.execute("""
             SELECT data_type FROM information_schema.columns 
@@ -141,12 +153,18 @@ def admin_page():
 def to_int_or_none(value):
     if value == '' or value is None:
         return None
-    return int(value)
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
 
 def to_float_or_none(value):
     if value == '' or value is None:
         return None
-    return float(value)
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 # --- API 端點 ---
@@ -229,7 +247,15 @@ def handle_profile():
                 # [MODIFIED] 確保 liff.html 能拿到正確且同步的 status
                 _is_active, status_string = check_user_active(user_id)
                 profile_dict['status'] = status_string
-                
+
+                # [NEW] 新增：計算並回傳剩餘天數
+                profile_dict['days_remaining'] = None
+                if profile.get('expiry_timestamp'):
+                    now_utc = datetime.now(pytz.utc)
+                    if profile['expiry_timestamp'] > now_utc:
+                        delta = profile['expiry_timestamp'] - now_utc
+                        profile_dict['days_remaining'] = delta.days
+
                 return jsonify(profile_dict)
             
             return jsonify({})
@@ -285,6 +311,59 @@ def handle_log():
             }
             return jsonify(response_data)
     conn.close()
+
+# [NEW] 新增：個人化運動資料庫 API
+@app.route('/api/user-exercises', methods=['GET', 'POST'])
+def handle_user_exercises():
+    # 權限驗證
+    operator_id = request.headers.get('X-Operator-User-Id')
+    if not operator_id:
+        return jsonify({"error": "X-Operator-User-Id header is required"}), 400
+    
+    is_active, status = check_user_active(operator_id)
+    if not is_active:
+        return jsonify({"error": "Access denied.", "status": status}), 403
+
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        if request.method == 'GET':
+            user_id = request.args.get('userId')
+            if not user_id:
+                return jsonify({"error": "userId is required"}), 400
+            
+            cur.execute('SELECT slot_index, exercise_name, kcal FROM user_exercises WHERE user_id = %s ORDER BY slot_index ASC', (user_id,))
+            exercises = cur.fetchall()
+            return jsonify([dict(row) for row in exercises])
+
+        if request.method == 'POST':
+            data = request.json
+            user_id = data.get('userId')
+            exercises = data.get('exercises')
+
+            if not user_id or not isinstance(exercises, list) or len(exercises) != 3:
+                return jsonify({"error": "Invalid payload. Required: userId and a list of 3 exercises."}), 400
+
+            # 遍歷並儲存三組運動
+            for i, ex in enumerate(exercises):
+                slot_index = i + 1
+                # 伺服器端基本驗證
+                name = ex.get('name')
+                kcal = to_int_or_none(ex.get('kcal'))
+                
+                cur.execute('''
+                    INSERT INTO user_exercises (user_id, slot_index, exercise_name, kcal)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id, slot_index) DO UPDATE SET
+                        exercise_name = EXCLUDED.exercise_name,
+                        kcal = EXCLUDED.kcal
+                ''', (user_id, slot_index, name, kcal))
+            
+            conn.commit()
+            return jsonify({"status": "success", "message": "User exercises saved."})
+    
+    conn.close()
+    return jsonify({"error": "Method not allowed"}), 405
+
 
 @app.route('/api/completion_dots', methods=['GET'])
 def get_completion_dots():
