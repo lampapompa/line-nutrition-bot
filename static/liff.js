@@ -6,17 +6,16 @@ let userToLoad = null;
 let operatorId = null;
 let isViewingAsAdmin = false;
 let userProfileData = {};
-let userExercises = []; // [NEW] 用於儲存使用者的個人化運動
+let userExercises = []; 
 
 let currentDate = new Date();
 let autosaveTimer = null;
 let trendsChart = null;
 let profileAutosaveTimer = null;
-let currentExerciseSession = []; // 日誌的運動暫存
+let exerciseDbAutosaveTimer = null; // [NEW] 用於自訂運動自動儲存的計時器
+let currentExerciseSession = []; 
 let profileExerciseSession = [];
 
-// [MODIFIED] exercisePresets 已被個人化運動資料庫取代，故移除。
-// EXERCISE_METS 仍保留給個人檔案的運動目標設定使用。
 const EXERCISE_METS = { '跑步': 8.0, '快走': 4.3, '散步': 3.5, '瑜珈': 2.5 };
 const defaultExercisePresets = [
     { type: '跑步', duration: 10 },
@@ -66,25 +65,30 @@ function showToast(message) {
 
 // --- 3. 核心功能函式 ---
 
-// [NEW] 新增：讀取使用者的個人化運動
 async function loadUserExercises() {
     if (!userToLoad) return;
     try {
         const exercises = await fetchAPI(`/api/user-exercises?userId=${userToLoad}`);
-        userExercises = exercises && exercises.length ? exercises : []; // 確保有回傳值
-        // 後續可以在此處將讀取的運動資料填入個人檔案的設定區
+        userExercises = exercises && exercises.length ? exercises : [];
+        
+        // [NEW] 讀取後，將資料填入個人檔案的設定區
+        const nameInputs = document.querySelectorAll('.user-exercise-name-input');
+        const kcalInputs = document.querySelectorAll('.user-exercise-kcal-input');
+        
+        userExercises.forEach((ex, i) => {
+            if(nameInputs[i]) nameInputs[i].value = ex.exercise_name || '';
+            if(kcalInputs[i]) kcalInputs[i].value = ex.kcal || '';
+        });
+
     } catch (error) {
         console.error("讀取個人化運動失敗:", error);
-        // 即使讀取失敗，也保持空陣列，避免程式出錯
         userExercises = [];
     }
 }
 
-// [NEW] 新增：儲存使用者的個人化運動
+// [MODIFIED] 修改為自動儲存，不再有點擊觸發
 async function saveUserExercises() {
     if (!userToLoad) return;
-    // 注意：此處的 'user-exercise-name-1', 'user-exercise-kcal-1' 等 ID
-    // 需要您在 liff.html 的個人檔案頁面中建立對應的 input 元素
     const exercisesToSave = [
         { name: document.getElementById('user-exercise-name-1').value, kcal: document.getElementById('user-exercise-kcal-1').value },
         { name: document.getElementById('user-exercise-name-2').value, kcal: document.getElementById('user-exercise-kcal-2').value },
@@ -99,14 +103,21 @@ async function saveUserExercises() {
                 exercises: exercisesToSave
             })
         });
-        showToast('✓ 常用運動已儲存');
-        userExercises = exercisesToSave; // 立刻更新前端狀態
-        renderUserExerciseButtons(); // 重新渲染每日紀錄頁的按鈕
+        showToast('✓ 常用運動已自動儲存');
+        userExercises = await fetchAPI(`/api/user-exercises?userId=${userToLoad}`); // 重新從後端獲取最新資料確保同步
+        renderUserExerciseButtons(); 
     } catch (error) {
         console.error("儲存個人化運動失敗:", error);
         showToast('儲存失敗');
     }
 }
+
+// [NEW] 自動儲存自訂運動的觸發器
+function triggerExerciseDbAutosave() {
+    clearTimeout(exerciseDbAutosaveTimer);
+    exerciseDbAutosaveTimer = setTimeout(saveUserExercises, 1500); // 延遲1.5秒
+}
+
 
 async function saveProfileData(callback) {
     if (!userToLoad) return;
@@ -168,8 +179,11 @@ async function loadProfileData() {
 
         document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
         if (userProfileData.target_calories) {
-            const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => Number(btn.dataset.finalKcal) === Number(userProfileData.target_calories));
-            if (selectedBtn) selectedBtn.classList.add('selected');
+            // [MODIFIED] 改為使用 setTimeout 確保 TDEE 計算完成後再執行
+            setTimeout(() => {
+                const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => Number(btn.dataset.finalKcal) === Number(userProfileData.target_calories));
+                if (selectedBtn) selectedBtn.classList.add('selected');
+            }, 0);
         }
     } catch (error) {
         console.error("讀取個人檔案失敗:", error);
@@ -235,30 +249,24 @@ function handleLogInputChange() {
     triggerAutosave();
 }
 
-// [MODIFIED] 月份切換邏輯
 async function showPrevMonth() {
     const today = new Date();
     currentDate.setMonth(currentDate.getMonth() - 1);
-    // 如果切換後的月份不是當前月份，預設選中 1 號
     if (currentDate.getFullYear() !== today.getFullYear() || currentDate.getMonth() !== today.getMonth()) {
         currentDate.setDate(1);
     } else {
-        // 如果切換後剛好是當前月份，則選中今天
         currentDate = new Date();
     }
     await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
     await loadLogDataForDate(currentDate);
 }
 
-// [MODIFIED] 月份切換邏輯
 async function showNextMonth() {
     const today = new Date();
     currentDate.setMonth(currentDate.getMonth() + 1);
-    // 如果切換後的月份不是當前月份，預設選中 1 號
     if (currentDate.getFullYear() !== today.getFullYear() || currentDate.getMonth() !== today.getMonth()) {
         currentDate.setDate(1);
     } else {
-        // 如果切換後剛好是當前月份，則選中今天
         currentDate = new Date();
     }
     await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
@@ -291,7 +299,6 @@ async function updateChartRange(range, element = null) {
 
 function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
 
-// [NEW] 圖表顯示/隱藏全部的函式
 function showAllChartDatasets() {
     if (!trendsChart) return;
     trendsChart.data.datasets.forEach((_, index) => {
@@ -301,7 +308,6 @@ function showAllChartDatasets() {
     document.querySelectorAll('.chart-toggle').forEach(el => el.checked = true);
 }
 
-// [NEW] 圖表顯示/隱藏全部的函式
 function hideAllChartDatasets() {
     if (!trendsChart) return;
     trendsChart.data.datasets.forEach((_, index) => {
@@ -338,7 +344,7 @@ function updateLocalProfileValue(key, value) {
     userProfileData[key] = value;
 }
 
-// [MODIFIED] Bug 修正與即時連動
+// [MODIFIED] Bug 修正與即時連動 - 這是最終修正版
 function updateProfileCalculations() {
     const weight = parseFloat(document.getElementById('profile-weight').value);
     if (weight > 0) {
@@ -358,18 +364,34 @@ function updateProfileCalculations() {
         let tdee = Math.round(bmr * activityLevel);
         document.getElementById('bmr-display').textContent = `${bmr} kcal`;
         document.getElementById('tdee-display').textContent = `${tdee} kcal`;
+        
+        // [BUG FIX] 當 TDEE 變化時，自動更新目標卡路里
+        const selectedGoalBtn = document.querySelector('.goal-button.selected');
+        if (selectedGoalBtn) {
+            const goalType = selectedGoalBtn.dataset.goalType;
+            let newTargetCalories;
+            if (goalType === 'maintain') {
+                newTargetCalories = tdee;
+            } else if (goalType === 'mild_loss') {
+                newTargetCalories = tdee - 300;
+            } else if (goalType === 'loss') {
+                newTargetCalories = tdee - 500;
+            }
+            if (newTargetCalories) {
+                document.getElementById('target-calories').value = newTargetCalories;
+                userProfileData.target_calories = newTargetCalories;
+            }
+        }
+        
         updateGoalOptions(tdee);
+
     } else {
         userProfileData.bmr = null;
         document.getElementById('bmr-display').textContent = '---';
         document.getElementById('tdee-display').textContent = '---';
         updateGoalOptions(null);
     }
-    // [BUG FIX CONFIRMATION]
-    // 呼叫 updateGoalDashboard() 的這行程式碼原本就存在且位置正確。
-    // 這確保了只要個人檔案數據變動，儀表板的"當前數值"會重新計算百分比。
-    // 注意：這不會自動更改使用者的"目標值"，目標值需要使用者點擊目標按鈕來設定。
-    // 此處確保邏輯被正確執行。
+    
     updateGoalDashboard();
 }
 
@@ -474,7 +496,6 @@ function updateGoalDashboard() {
     }
 }
 
-// [MODIFIED] 日曆渲染邏輯，以支援新的顏色配置
 async function renderCalendar(year, month) {
     const calendarMonthYear = document.getElementById('calendar-month-year');
     const calendarDays = document.getElementById('calendar-days');
@@ -494,7 +515,6 @@ async function renderCalendar(year, month) {
             dayEl.dataset.day = day;
             dayEl.classList.add('calendar-day');
 
-            // 顏色邏輯：'today' (深綠色) 的 class 優先，'selected' (淺綠色) 其次
             if (year === today.getFullYear() && month === today.getMonth() && day === today.getDate()) {
                 dayEl.classList.add('today');
             }
@@ -517,7 +537,6 @@ async function renderCalendar(year, month) {
     } catch(e) { console.error("渲染日曆失敗", e) }
 }
 
-// [MODIFIED] 圖表渲染邏輯，以支援數據標籤
 async function renderChart(range = '7days') {
     try {
         const chartData = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
@@ -554,9 +573,8 @@ async function renderChart(range = '7days') {
                         pointRadius: 5,
                         pointBackgroundColor: '#f97316',
                         order: 3,
-                        // [NEW] 數據標籤設定
                         datalabels: {
-                            display: (context) => context.dataset.data[context.dataIndex] > 0, // 只顯示大於0的數據
+                            display: (context) => context.dataset.data[context.dataIndex] > 0,
                             align: 'top',
                             color: '#c2410c',
                             font: { weight: 'bold' }
@@ -564,16 +582,12 @@ async function renderChart(range = '7days') {
                     }
                 ]
             },
-            // [NEW] 註冊插件
-            // 注意：您需要在 liff.html 中透過 <script> 標籤引入 chartjs-plugin-datalabels
-            // 例如: <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
             plugins: [ChartDataLabels],
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
                 aspectRatio: 1,
                 plugins: {
-                    // [NEW] 全域關閉數據標籤，只在 dataset 中單獨開啟
                     datalabels: {
                         display: false,
                     }
@@ -709,7 +723,6 @@ function handleProfileExerciseQuickAdd(event) {
 function renderProfileQuickExerciseButtons() {
     const container = document.getElementById('profile-quick-add-exercise');
     if (!container) return;
-    // [MODIFIED] 使用 defaultExercisePresets 進行渲染
     container.innerHTML = defaultExercisePresets.map(item =>
         `<button class="quick-add-btn" data-type="${item.type}" data-duration="${item.duration}">${item.type} +${item.duration}分</button>`
     ).join('');
@@ -757,25 +770,23 @@ function setupEventListeners() {
     document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
     document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value, e.target));
     
-    // [NEW] 圖表全部顯示/隱藏按鈕的事件監聽
-    // 注意：您需要在 liff.html 中建立 id="show-all-btn" 和 id="hide-all-btn" 的按鈕
     const showAllBtn = document.getElementById('show-all-btn');
     if (showAllBtn) showAllBtn.addEventListener('click', showAllChartDatasets);
     const hideAllBtn = document.getElementById('hide-all-btn');
     if (hideAllBtn) hideAllBtn.addEventListener('click', hideAllChartDatasets);
     
-    // [NEW] 儲存個人化運動按鈕的事件監聽
-    // 注意：您需要在 liff.html 中建立 id="save-user-exercises-btn" 的按鈕
-    const saveExercisesBtn = document.getElementById('save-user-exercises-btn');
-    if (saveExercisesBtn) saveExercisesBtn.addEventListener('click', saveUserExercises);
+    // [MODIFIED] 自訂運動改為自動儲存
+    document.querySelectorAll('.user-exercise-input').forEach(el => {
+        el.addEventListener('input', triggerExerciseDbAutosave);
+    });
     
-    // [NEW] 輸入框一鍵清除按鈕的事件監聽 (使用事件委派)
     const appElement = document.getElementById('app');
     if(appElement) {
         appElement.addEventListener('click', (event) => {
             if (event.target.classList.contains('clear-input-btn')) {
-                const inputId = event.target.dataset.target;
-                const inputElement = document.getElementById(inputId) || document.querySelector(`[data-field="${inputId}"]`);
+                // [MODIFIED] 修正 data-target 的邏輯，使其可以對應 data-field
+                const targetIdentifier = event.target.dataset.target;
+                const inputElement = document.querySelector(`[data-field="${targetIdentifier}"]`) || document.getElementById(targetIdentifier);
                 if (inputElement) {
                     inputElement.value = '';
                     inputElement.dispatchEvent(new Event('input', { bubbles: true }));
@@ -797,27 +808,48 @@ function setupEventListeners() {
         });
     });
 
-    // [MODIFIED] 每日紀錄頁的運動快捷按鈕事件監聽，改為讀取 name 和 kcal
     document.getElementById('quick-add-exercise').addEventListener('click', (event) => {
         const target = event.target.closest('button');
         if (!target) return;
 
-        const name = target.dataset.name;
-        const kcal = parseInt(target.dataset.kcal);
-
-        if (!name || isNaN(kcal)) return;
+        // [MODIFIED] 處理預設運動和自訂運動的點擊
+        const type = target.dataset.type; // 預設運動
+        const duration = parseInt(target.dataset.duration); // 預設運動
         
-        const textInput = document.querySelector('[data-field="exercise_text"]');
-        const kcalInput = document.querySelector('[data-field="exercise_kcal"]');
+        const name = target.dataset.name; // 自訂運動
+        const kcal = parseInt(target.dataset.kcal); // 自訂運動
 
-        const currentText = textInput.value;
-        const currentKcal = parseInt(kcalInput.value) || 0;
+        // 處理自訂運動
+        if (name && !isNaN(kcal)) {
+            const textInput = document.querySelector('[data-field="exercise_text"]');
+            const kcalInput = document.querySelector('[data-field="exercise_kcal"]');
+            const currentText = textInput.value;
+            const currentKcal = parseInt(kcalInput.value) || 0;
 
-        textInput.value = currentText ? `${currentText}、${name}` : name;
-        kcalInput.value = currentKcal + kcal;
+            textInput.value = currentText ? `${currentText}、${name}` : name;
+            kcalInput.value = currentKcal + kcal;
 
-        textInput.dispatchEvent(new Event('input', { bubbles: true }));
-        kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
+            return; // 處理完畢，結束函式
+        }
+
+        // 處理預設運動
+        if (type && !isNaN(duration)) {
+             const bmr = userProfileData.bmr;
+            if (!bmr) {
+                alert("請先到「個人檔案」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
+                switchTab('profile');
+                return;
+            }
+            const existingExercise = currentExerciseSession.find(ex => ex.type === type);
+            if (existingExercise) {
+                existingExercise.duration += duration;
+            } else {
+                currentExerciseSession.push({ type, duration });
+            }
+            updateExerciseInputs();
+        }
     });
 
     document.getElementById('quick-add-weight').addEventListener('click', (event) => {
@@ -857,29 +889,44 @@ function setupEventListeners() {
     });
 }
 
-// [MODIFIED] 此函式被 renderUserExerciseButtons 取代
-function renderQuickExerciseButtons() {
-    // 這個函式現在由 renderUserExerciseButtons 處理
-    // 為了向下相容和避免錯誤，保留空函式或直接呼叫新函式
-    renderUserExerciseButtons();
-}
+// [REMOVED] 此函式已被 renderUserExerciseButtons 取代和合併，故移除
+// function renderQuickExerciseButtons() { ... }
 
-// [NEW] 根據使用者的自訂運動來渲染按鈕
+// [MODIFIED] 根據您的要求，同時渲染預設運動和自訂運動
 function renderUserExerciseButtons() {
     const container = document.getElementById('quick-add-exercise');
     if (!container) return;
 
+    let htmlContent = '';
+
+    // 1. 渲染預設運動按鈕 (使用 BMR 計算)
+    if (userProfileData.bmr) {
+        const defaultButtonsHtml = defaultExercisePresets.map(item => {
+            const met = EXERCISE_METS[item.type];
+            const kcal = Math.round((userProfileData.bmr / 24) * met * (item.duration / 60));
+            // [MODIFIED] 預設按鈕也改為直接加總卡路里，簡化邏輯
+            return `<button class="quick-add-btn" data-name="${item.type} ${item.duration}分鐘" data-kcal="${kcal}">${item.type} +${item.duration}分</button>`;
+        }).join('');
+        htmlContent += defaultButtonsHtml;
+    }
+
+    // 2. 渲染使用者自訂運動按鈕
     if (userExercises && userExercises.length > 0) {
-        // 如果有自訂運動，使用自訂運動
-        container.innerHTML = userExercises
-            .filter(item => item.name && item.kcal) // 過濾掉無效的設定
+        const customButtonsHtml = userExercises
+            .filter(item => item.exercise_name && item.kcal) 
             .map(item =>
-                `<button class="quick-add-btn" data-name="${item.name}" data-kcal="${item.kcal}">${item.name} +${item.kcal}kcal</button>`
+                `<button class="quick-add-btn" data-name="${item.exercise_name}" data-kcal="${item.kcal}">${item.exercise_name} +${item.kcal}kcal</button>`
             ).join('');
+        
+        if (customButtonsHtml) {
+             htmlContent += (htmlContent ? ' ' : '') + customButtonsHtml; // 如果已有預設按鈕，加個空格
+        }
+    }
+    
+    if (!htmlContent) {
+        container.innerHTML = `<p class="text-xs text-gray-500">請先在「個人檔案」頁面填寫身體數據以顯示預設運動，或設定您的常用運動。</p>`;
     } else {
-        // 如果沒有，顯示預設運動 (此處的計算需要 BMR，故僅為示意)
-        // 為了簡單起見，暫時留空或顯示提示
-        container.innerHTML = `<p class="text-xs text-gray-500">尚未設定常用運動，請至「個人檔案」頁面設定。</p>`;
+        container.innerHTML = htmlContent;
     }
 }
 
@@ -910,12 +957,10 @@ function updateExerciseInputs() {
     kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// [NEW] 新增：更新會籍狀態 Banner 的函式
 function updateMembershipBanner() {
     const displayDiv = document.getElementById('membership-dates-display');
     if (!displayDiv) return;
 
-    // 注意：此處的 days_remaining 欄位需要後端 API 在 /api/profile 回應中提供
     const { status, days_remaining } = userProfileData;
 
     let fullText = '會籍狀態';
@@ -935,7 +980,7 @@ function updateMembershipBanner() {
         } else {
             fullText = '體驗中 (請洽管理員)';
         }
-    } else { // 包括過期、終止或未設定等其他狀態
+    } else { 
         labelClass = 'bg-red-100 text-red-800';
         fullText = '會籍已失效 (請洽管理員)';
     }
@@ -969,12 +1014,10 @@ async function main() {
             userProfileData.displayName = profile.displayName;
         }
 
-        // [MODIFIED] 將狀態檢查與 profile 讀取合併，減少一次 API 呼叫
-        // 原本的 /api/check_status 可以考慮棄用
         await loadProfileData();
 
         if (!isViewingAsAdmin) {
-            if (userProfileData.status === 'Terminated') { // 假設 profile API 會回傳 status
+            if (userProfileData.status === 'Terminated') {
                  document.getElementById('loading').classList.add('hidden');
                  document.getElementById('access-denied').classList.remove('hidden');
                  return;
@@ -984,15 +1027,7 @@ async function main() {
             }
         }
 
-        // [MODIFIED] 呼叫新的 Banner 更新函式
         updateMembershipBanner();
-        
-        // [MODIFIED] 移除舊的 Banner 更新邏輯，改由 updateMembershipBanner 統一處理
-        /*
-        const displayDiv = document.getElementById('membership-dates-display');
-        ... (舊的程式碼已移除) ...
-        displayDiv.className = `text-sm px-3 py-1 rounded-full ${labelClass}`;
-        */
         
         if (userProfileData.membership_start_date) {
             document.getElementById('membership-range-btn').classList.remove('hidden');
@@ -1021,10 +1056,9 @@ async function main() {
             }
         }
         
-        // [NEW] 讀取個人化運動設定
         await loadUserExercises();
 
-        renderUserExerciseButtons(); // [MODIFIED] 替換舊的 renderQuickExerciseButtons
+        renderUserExerciseButtons();
         renderProfileQuickExerciseButtons();
 
         document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
