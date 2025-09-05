@@ -73,10 +73,10 @@ async function loadUserExercises() {
     try {
         const exercises = await fetchAPI(`/api/user-exercises?userId=${userToLoad}`);
         userExercises = exercises && exercises.length ? exercises : [];
-        
+
         const nameInputs = document.querySelectorAll('.user-exercise-name-input');
         const kcalInputs = document.querySelectorAll('.user-exercise-kcal-input');
-        
+
         nameInputs.forEach(input => input.value = '');
         kcalInputs.forEach(input => input.value = '');
 
@@ -361,7 +361,7 @@ function updateProfileCalculations() {
         let tdee = Math.round(bmr * activityLevel);
         document.getElementById('bmr-display').textContent = `${bmr} kcal`;
         document.getElementById('tdee-display').textContent = `${tdee} kcal`;
-        
+
         const selectedGoalBtn = document.querySelector('.goal-button.selected');
         if (selectedGoalBtn) {
             const goalType = selectedGoalBtn.dataset.goalType;
@@ -378,7 +378,7 @@ function updateProfileCalculations() {
                 userProfileData.target_calories = newTargetCalories;
             }
         }
-        
+
         updateGoalOptions(tdee);
 
     } else {
@@ -387,7 +387,7 @@ function updateProfileCalculations() {
         document.getElementById('tdee-display').textContent = '---';
         updateGoalOptions(null);
     }
-    
+
     updateGoalDashboard();
 }
 
@@ -536,7 +536,17 @@ async function renderCalendar(year, month) {
 // [MODIFIED] 圖表最終版
 async function renderChart(range = '7days') {
     try {
-        const chartData = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
+        // [MODIFIED] apiResponse 變數現在會包含圖表數據和後端計算好的平均值
+        const apiResponse = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
+        const chartData = { // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
+            labels: apiResponse.labels,
+            weight: apiResponse.weight,
+            calories: apiResponse.calories,
+            water: apiResponse.water,
+            exercise: apiResponse.exercise,
+            capsule: apiResponse.capsule,
+        };
+        
         const ctx = document.getElementById('trendsChart').getContext('2d');
         if (trendsChart) trendsChart.destroy();
 
@@ -547,11 +557,10 @@ async function renderChart(range = '7days') {
             maxWeight = Math.max(...weights) + 0.5;
         }
 
-        // 動態計算右側 Y 軸最大值以增加緩衝空間
         const rightAxisData = [
             ...chartData.calories, ...chartData.water,
             ...chartData.exercise, ...chartData.capsule
-        ].filter(v => v !== null && v > 0); // 過濾掉 0 和 null
+        ].filter(v => v !== null && v > 0);
 
         const rightAxisMax = rightAxisData.length > 0 ? Math.max(...rightAxisData) : 1000;
         const finalRightAxisMax = Math.ceil((rightAxisMax * 1.2) / 100) * 100;
@@ -599,49 +608,58 @@ async function renderChart(range = '7days') {
                         max: maxWeight,
                     },
                     yKcal: {
-                        type: 'logarithmic', // 改為對數刻度
+                        // [MODIFIED] BUG FIX: 將Y軸從對數改回線性，解決圖表崩潰問題
+                        type: 'linear',
                         position: 'right',
                         title: { display: true, text: 'kcal / c.c. / 包' },
                         grid: { drawOnChartArea: false },
-                        min: 1, // 對數刻度最小值不能為 0
+                        // [MODIFIED] BUG FIX: 確保Y軸從0開始，而不是1
+                        min: 0, 
                         max: finalRightAxisMax,
                     }
                 }
             }
         });
-        
+
         document.querySelectorAll('.chart-toggle').forEach((el, index) => {
              el.checked = trendsChart.isDatasetVisible(index);
         });
         
+        // [MODIFIED] 將完整的 API 回應傳遞給 updateAverages 函式
+        updateAverages(apiResponse);
+
     } catch (e) { console.error("渲染圖表失敗", e) }
 }
 
-
-function updateAverages(chartData) {
+// [MODIFIED] 優化：此函式現在直接讀取後端算好的平均值，不再於前端計算
+function updateAverages(apiResponse) {
     const averagesDiv = document.getElementById('averages-display');
     if (!averagesDiv) return;
 
-    const calculateAverage = (data) => {
-        const validData = data.filter(item => item !== null && typeof item === 'number');
-        if (validData.length === 0) return 'N/A';
-        const sum = validData.reduce((a, b) => a + b, 0);
-        const avg = sum / validData.length;
-        if (['weight', 'capsule'].some(key => chartData[key] === data)) {
-            return avg.toFixed(1);
+    // [REMOVED] 前端計算邏輯已移除，改由後端處理
+    // const calculateAverage = (data) => { ... };
+
+    // [MODIFIED] 直接從 apiResponse 中讀取後端算好的 averages 物件
+    const averages = apiResponse.averages || {}; // 如果後端沒有提供 averages，則使用空物件以避免錯誤
+
+    const avgWeight = averages.weight;
+    const avgCalories = averages.calories;
+    const avgWater = averages.water;
+    const avgCapsule = averages.capsule;
+    
+    // [MODIFIED] 簡化顯示邏輯
+    const formatAverage = (avg, unit, decimalPlaces = 1) => {
+        if (avg === null || typeof avg === 'undefined') {
+            return 'N/A';
         }
-        return Math.round(avg);
+        const value = Number(avg).toFixed(decimalPlaces);
+        return `${value} <span class="text-xs font-normal">${unit}</span>`;
     };
 
-    const avgWeight = calculateAverage(chartData.weight);
-    const avgCalories = calculateAverage(chartData.calories);
-    const avgWater = calculateAverage(chartData.water);
-    const avgCapsule = calculateAverage(chartData.capsule);
-
-    document.getElementById('avg-weight').innerHTML = avgWeight !== 'N/A' ? `${avgWeight} <span class="text-xs font-normal">kg</span>` : 'N/A';
-    document.getElementById('avg-calories').innerHTML = avgCalories !== 'N/A' ? `${avgCalories} <span class="text-xs font-normal">kcal</span>` : 'N/A';
-    document.getElementById('avg-water').innerHTML = avgWater !== 'N/A' ? `${avgWater} <span class="text-xs font-normal">c.c.</span>` : 'N/A';
-    document.getElementById('avg-capsule').innerHTML = avgCapsule !== 'N/A' ? `${avgCapsule} <span class="text-xs font-normal">包</span>` : 'N/A';
+    document.getElementById('avg-weight').innerHTML = formatAverage(avgWeight, 'kg', 1);
+    document.getElementById('avg-calories').innerHTML = formatAverage(avgCalories, 'kcal', 0);
+    document.getElementById('avg-water').innerHTML = formatAverage(avgWater, 'c.c.', 0);
+    document.getElementById('avg-capsule').innerHTML = formatAverage(avgCapsule, '包', 1);
 }
 
 
@@ -779,10 +797,18 @@ function setupEventListeners() {
             const clearButton = event.target.closest('.clear-input-btn');
             if (clearButton) {
                 const targetIdentifier = clearButton.dataset.target;
-                const inputElement = document.querySelector(`[data-field="${targetIdentifier}"]`) || document.getElementById(targetIdentifier);
-                if (inputElement) {
-                    inputElement.value = '';
-                    inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // [MODIFIED] BUG FIX: 修正運動清除按鈕的邏輯
+                if (targetIdentifier === 'exercise_text' || targetIdentifier === 'exercise_kcal') {
+                    // 如果清除的是運動相關欄位，則執行完整的清除函式
+                    clearExercise();
+                } else {
+                    // 否則，執行原本的單一欄位清除邏輯
+                    const inputElement = document.querySelector(`[data-field="${targetIdentifier}"]`) || document.getElementById(targetIdentifier);
+                    if (inputElement) {
+                        inputElement.value = '';
+                        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                 }
             }
         });
