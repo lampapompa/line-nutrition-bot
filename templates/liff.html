@@ -18,9 +18,8 @@
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .calendar-day { text-align: center; padding: 8px; border-radius: 50%; position: relative; cursor: pointer; }
         
-        /* [MODIFIED] 調整日曆顏色，讓 "今天" (today) 樣式優先級最高、最醒目 */
-        .calendar-day.selected { background-color: #a7f3d0; } /* 選中的日期改為淺綠色 */
-        .calendar-day.today { background-color: #10B981; color: white; } /* 今天使用深綠色 */
+        .calendar-day.selected { background-color: #a7f3d0; } 
+        .calendar-day.today { background-color: #10B981; color: white; } 
 
         .calendar-day .completion-dot {
             position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
@@ -60,7 +59,6 @@
         .toast.show {
             visibility: visible; opacity: 1; bottom: 80px; transition: opacity 0.5s linear, bottom 0.5s ease-out;
         }
-        /* [NEW] 清除按鈕的樣式 */
         .clear-input-btn {
             position: absolute;
             inset-block-start: 0;
@@ -69,10 +67,10 @@
             display: flex;
             align-items: center;
             padding-inline-end: 0.75rem;
-            color: #9ca3af; /* gray-400 */
+            color: #9ca3af;
         }
         .clear-input-btn:hover {
-            color: #4b5563; /* gray-600 */
+            color: #4b5563;
         }
 
     </style>
@@ -188,23 +186,22 @@
                 
                 <div class="space-y-3 pt-4 border-t">
                     <h3 class="text-lg font-bold text-gray-800">設定常用運動</h3>
-                    <p class="text-sm text-gray-600">在此設定您最常用的三項運動，它們將會顯示在「每日記錄」頁面作為快捷按鈕。</p>
+                    <p class="text-sm text-gray-600">在此設定您常用的運動，輸入後將自動儲存，並顯示在「每日記錄」頁面作為快捷按鈕。</p>
                     <div class="space-y-2">
                         <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-1" class="profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 1 名稱">
-                            <input type="number" id="user-exercise-kcal-1" class="profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                            <input type="text" id="user-exercise-name-1" class="user-exercise-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 1 名稱">
+                            <input type="number" id="user-exercise-kcal-1" class="user-exercise-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-2" class="profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 2 名稱">
-                            <input type="number" id="user-exercise-kcal-2" class="profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                            <input type="text" id="user-exercise-name-2" class="user-exercise-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 2 名稱">
+                            <input type="number" id="user-exercise-kcal-2" class="user-exercise-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-3" class="profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 3 名稱">
-                            <input type="number" id="user-exercise-kcal-3" class="profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                            <input type="text" id="user-exercise-name-3" class="user-exercise-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 3 名稱">
+                            <input type="number" id="user-exercise-kcal-3" class="user-exercise-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
                         </div>
                     </div>
-                    <button id="save-user-exercises-btn" class="w-full bg-emerald-600 text-white font-bold py-2 px-4 rounded-md hover:bg-emerald-700 transition-colors">儲存常用運動</button>
-                </div>
+                    </div>
 
             </div>
 
@@ -255,18 +252,19 @@
                 </div>
                 <div class="space-y-4" id="daily-log-inputs">
                     <div><label class="text-lg font-bold text-gray-800">飲食記錄</label></div>
-                    <div><label class="block text-sm font-medium text-gray-700">早餐</label><div class="flex gap-2"><div class="relative w-3/4"><textarea data-field="breakfast_text" rows="2" class="log-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="breakfast_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="breakfast_kcal" type="number" class="log-input calorie-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="kcal"><button class="clear-input-btn" data-target="breakfast_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
-                    <div><label class="block text-sm font-medium text-gray-700">午餐</label><div class="flex gap-2"><div class="relative w-3/4"><textarea data-field="lunch_text" rows="2" class="log-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="lunch_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="lunch_kcal" type="number" class="log-input calorie-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="kcal"><button class="clear-input-btn" data-target="lunch_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
-                    <div><label class="block text-sm font-medium text-gray-700">晚餐</label><div class="flex gap-2"><div class="relative w-3/4"><textarea data-field="dinner_text" rows="2" class="log-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="dinner_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="dinner_kcal" type="number" class="log-input calorie-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="kcal"><button class="clear-input-btn" data-target="dinner_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
-                    <div><label class="block text-sm font-medium text-gray-700">點心/其他</label><div class="flex gap-2"><div class="relative w-3/4"><textarea data-field="snacks_text" rows="2" class="log-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="snacks_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="snacks_kcal" type="number" class="log-input calorie-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="kcal"><button class="clear-input-btn" data-target="snacks_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
-                    <div><label class="block text-sm font-medium text-gray-700">飲料</label><div class="flex gap-2"><div class="relative w-3/4"><textarea data-field="drinks_text" rows="2" class="log-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="drinks_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="drinks_kcal" type="number" class="log-input calorie-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="kcal"><button class="clear-input-btn" data-target="drinks_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
+                    
+                    <div><label class="block text-sm font-medium text-gray-700">早餐</label><div class="flex items-center gap-2"><div class="relative w-3/4"><textarea data-field="breakfast_text" rows="2" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="breakfast_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="breakfast_kcal" type="number" class="log-input calorie-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="kcal"><button class="clear-input-btn" data-target="breakfast_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
+                    <div><label class="block text-sm font-medium text-gray-700">午餐</label><div class="flex items-center gap-2"><div class="relative w-3/4"><textarea data-field="lunch_text" rows="2" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="lunch_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="lunch_kcal" type="number" class="log-input calorie-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="kcal"><button class="clear-input-btn" data-target="lunch_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
+                    <div><label class="block text-sm font-medium text-gray-700">晚餐</label><div class="flex items-center gap-2"><div class="relative w-3/4"><textarea data-field="dinner_text" rows="2" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="dinner_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="dinner_kcal" type="number" class="log-input calorie-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="kcal"><button class="clear-input-btn" data-target="dinner_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
+                    <div><label class="block text-sm font-medium text-gray-700">點心/其他</label><div class="flex items-center gap-2"><div class="relative w-3/4"><textarea data-field="snacks_text" rows="2" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="snacks_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="snacks_kcal" type="number" class="log-input calorie-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="kcal"><button class="clear-input-btn" data-target="snacks_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
+                    <div><label class="block text-sm font-medium text-gray-700">飲料</label><div class="flex items-center gap-2"><div class="relative w-3/4"><textarea data-field="drinks_text" rows="2" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8"></textarea><button class="clear-input-btn" data-target="drinks_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div class="relative w-1/4"><input data-field="drinks_kcal" type="number" class="log-input calorie-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="kcal"><button class="clear-input-btn" data-target="drinks_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div></div></div>
                     
                     <div><label class="text-lg font-bold text-gray-800 pt-4">身體數據</label></div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
                         <div class="flex items-center gap-2 mt-1">
                             <div class="relative flex-grow">
-                                <input data-field="water_cc" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8">
+                                <input data-field="water_cc" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8 text-center">
                                 <button class="clear-input-btn" data-target="water_cc"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                             <button class="quick-add-btn" data-amount="250">+250cc</button>
@@ -281,7 +279,7 @@
                                 <button class="clear-input-btn" data-target="exercise_text"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                             <div class="relative w-1/3">
-                                <input data-field="exercise_kcal" type="number" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="消耗kcal">
+                                <input data-field="exercise_kcal" type="number" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="消耗kcal">
                                 <button class="clear-input-btn" data-target="exercise_kcal"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                         </div>
@@ -292,7 +290,7 @@
                         <label class="block text-sm font-medium text-gray-700">今日體重 (kg)</label>
                         <div class="flex items-center gap-2 mt-1">
                             <div class="relative w-full">
-                                <input data-field="daily_weight" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8">
+                                <input data-field="daily_weight" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8 text-center">
                                 <button class="clear-input-btn" data-target="daily_weight"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                         </div>
@@ -303,7 +301,7 @@
                         <label class="block text-sm font-medium text-gray-700">今日使用燃脂膠囊 (包)</label>
                         <div class="flex items-center gap-2 mt-1">
                              <div class="relative w-full">
-                                <input data-field="capsule_qty" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8" placeholder="請輸入包數">
+                                <input data-field="capsule_qty" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="請輸入包數">
                                 <button class="clear-input-btn" data-target="capsule_qty"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                             <button id="quick-add-capsule" class="quick-add-btn whitespace-nowrap">+1 包</button>
