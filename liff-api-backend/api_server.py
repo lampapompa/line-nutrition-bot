@@ -128,7 +128,7 @@ def check_user_active(user_id):
     if user['expiry_timestamp'] and user['expiry_timestamp'] >= now_utc:
         return (True, "Active")
     
-    # 3. [NEW BUG FIX] 新增對「已過期」狀態的明確判斷
+    # 3. [BUG FIX] 新增對「已過期」狀態的明確判斷
     if user['expiry_timestamp'] and user['expiry_timestamp'] < now_utc:
         return (False, "Expired")
         
@@ -242,7 +242,6 @@ def handle_profile():
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
-                # 這裡會接收到修正後的正確 status
                 _is_active, status_string = check_user_active(user_id)
                 profile_dict['status'] = status_string
 
@@ -456,7 +455,7 @@ def get_all_users():
                 user['computed_status'] = 'Attention'
             elif end_date and end_date >= now_utc:
                 user['computed_status'] = 'Active'
-            # [NEW BUG FIX] 新增後台對「已過期」狀態的判斷
+            # [BUG FIX] 新增後台對「已過期」狀態的判斷
             elif end_date and end_date < now_utc:
                 user['computed_status'] = 'Expired'
             else:
@@ -524,7 +523,7 @@ def update_admin_profile():
                 updated_user['computed_status'] = 'Attention'
             elif end_date and end_date >= now_utc_for_status:
                 updated_user['computed_status'] = 'Active'
-            # [NEW BUG FIX] 新增後台對「已過期」狀態的判斷
+            # [BUG FIX] 新增後台對「已過期」狀態的判斷
             elif end_date and end_date < now_utc_for_status:
                 updated_user['computed_status'] = 'Expired'
             else:
