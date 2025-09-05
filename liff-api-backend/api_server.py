@@ -26,7 +26,7 @@ def init_db():
     print("正在檢查並初始化資料庫...")
     conn = get_db_connection()
     with conn.cursor() as cur:
-        # [MODIFIED] 在 user_profiles 中新增欄位
+        # [MODIFIED] 更新 user_profiles 表格結構
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
@@ -34,12 +34,15 @@ def init_db():
                 admin_nickname VARCHAR(255),
                 height REAL, profile_weight REAL, age INTEGER, gender VARCHAR(10),
                 activity_level REAL, target_calories INTEGER,
-                water_goal INTEGER, personal_notes TEXT, last_updated DATE,
-                exercise_goal INTEGER, capsule_goal INTEGER,
+                water_goal INTEGER, personal_notes TEXT, 
+                last_updated TIMESTAMPTZ, -- [MODIFIED] 修改為精確時間
+                exercise_goal INTEGER, 
+                exercise_goal_text TEXT, -- [NEW] 新增運動目標文字描述
+                capsule_goal INTEGER,
                 admin_notes TEXT, status VARCHAR(50),
                 expiry_timestamp TIMESTAMPTZ,
-                membership_start_date TIMESTAMPTZ,   -- [NEW] 會員起日
-                service_termination_date TIMESTAMPTZ    -- [NEW] 服務終止日
+                membership_start_date TIMESTAMPTZ,
+                service_termination_date TIMESTAMPTZ
             );
         ''')
         cur.execute('''
@@ -63,7 +66,8 @@ def init_db():
         profile_columns_to_check = {
             'admin_nickname': 'VARCHAR(255)',
             'membership_start_date': 'TIMESTAMPTZ',
-            'service_termination_date': 'TIMESTAMPTZ'
+            'service_termination_date': 'TIMESTAMPTZ',
+            'exercise_goal_text': 'TEXT' # [NEW] 加入新欄位檢查
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -71,6 +75,18 @@ def init_db():
             if col not in existing_cols:
                 cur.execute(f"ALTER TABLE user_profiles ADD COLUMN {col} {data_type};")
                 print(f"新增 {col} 欄位至 user_profiles")
+        
+        # [NEW] 檢查並升級 last_updated 欄位的資料型態
+        cur.execute("""
+            SELECT data_type FROM information_schema.columns 
+            WHERE table_name = 'user_profiles' AND column_name = 'last_updated';
+        """)
+        col_type_info = cur.fetchone()
+        if col_type_info and col_type_info[0].lower() == 'date':
+            print("正在將 user_profiles.last_updated 欄位型態從 DATE 修改為 TIMESTAMPTZ...")
+            cur.execute("ALTER TABLE user_profiles ALTER COLUMN last_updated TYPE TIMESTAMPTZ USING last_updated::timestamp with time zone;")
+            print("欄位型態修改完成。")
+
 
     conn.commit()
     conn.close()
@@ -80,7 +96,6 @@ def init_db():
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
 
-# [MODIFIED] 核心狀態檢查邏輯
 def check_user_active(user_id):
     if is_admin(user_id):
         return (True, "Admin")
@@ -92,21 +107,17 @@ def check_user_active(user_id):
     conn.close()
 
     if not user:
-        # 如果使用者不存在，暫時將其視為試用。實際的建立邏輯在 /api/profile
         return (True, "Trial")
 
     now_utc = datetime.now(pytz.utc)
 
-    # 1. 檢查服務是否已終止 (最高優先級)
     if user['service_termination_date'] and user['service_termination_date'] <= now_utc:
         return (False, "Terminated")
 
-    # 2. 檢查是否在正式會籍期間
     if user['membership_start_date'] and user['expiry_timestamp'] and \
        user['membership_start_date'] <= now_utc <= user['expiry_timestamp']:
         return (True, "Active")
         
-    # 3. 其他所有情況 (新用戶、會籍過期但在寬限期內) 都視為試用
     return (True, "Trial")
 
 
@@ -139,7 +150,6 @@ def check_status():
     if not user_id:
         return jsonify({"error": "userId is required"}), 400
     is_active, status = check_user_active(user_id)
-    # [MODIFIED] isActive 現在代表能否進入APP，status 提供了更詳細的狀態
     return jsonify({"isActive": is_active, "status": status})
 
 @app.route('/api/profile', methods=['GET', 'POST'])
@@ -147,47 +157,56 @@ def handle_profile():
     user_id = request.args.get('userId')
     if not user_id: return jsonify({"error": "userId is required"}), 400
     
-    # [MODIFIED] 權限檢查邏輯稍微調整
     is_active, status = check_user_active(user_id)
     operator_id = request.headers.get('X-Operator-User-Id')
     
     if request.method == 'GET' and not is_active and not is_admin(operator_id):
-         # 只有在 is_active 為 False (即 Terminated 狀態) 時才阻擋
         return jsonify({"error": "Access denied. Your subscription has been terminated.", "status": status}), 403
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         if request.method == 'POST':
-            # POST 邏輯維持不變
             data = request.json['data']
-            today = date.today()
+            # [MODIFIED] 改為使用帶有時區的當前時間
+            now_utc = datetime.now(pytz.utc)
             
+            # 雖然此變數未被直接使用，但為保持程式碼結構，仍將其保留
             profile_values = (
                 user_id, data.get('displayName'), to_float_or_none(data.get('height')),
                 to_float_or_none(data.get('weight')), to_int_or_none(data.get('age')),
                 data.get('gender'), to_float_or_none(data.get('activityLevel')),
                 to_int_or_none(data.get('targetCalories')), to_int_or_none(data.get('waterGoal')),
-                to_int_or_none(data.get('exerciseGoal')), to_int_or_none(data.get('capsuleGoal')),
-                data.get('personalNotes'), today
+                to_int_or_none(data.get('exerciseGoal')), 
+                data.get('exerciseGoalText'), # [NEW] 新增運動目標文字
+                to_int_or_none(data.get('capsuleGoal')),
+                data.get('personalNotes'), 
+                now_utc # [MODIFIED]
             )
             
+            # [MODIFIED] 更新 INSERT 和 UPDATE 語句以包含新欄位和新時間戳
             cur.execute('''
-                INSERT INTO user_profiles (user_id, display_name, height, profile_weight, age, gender, activity_level, target_calories, water_goal, exercise_goal, capsule_goal, personal_notes, last_updated)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO user_profiles (user_id, display_name, height, profile_weight, age, gender, activity_level, target_calories, water_goal, exercise_goal, exercise_goal_text, capsule_goal, personal_notes, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET
                     display_name = COALESCE(EXCLUDED.display_name, user_profiles.display_name), 
                     height = EXCLUDED.height, profile_weight = EXCLUDED.profile_weight, age = EXCLUDED.age,
                     gender = EXCLUDED.gender, activity_level = EXCLUDED.activity_level,
                     target_calories = EXCLUDED.target_calories, water_goal = EXCLUDED.water_goal,
-                    exercise_goal = EXCLUDED.exercise_goal, capsule_goal = EXCLUDED.capsule_goal,
-                    personal_notes = EXCLUDED.personal_notes, last_updated = EXCLUDED.last_updated
+                    exercise_goal = EXCLUDED.exercise_goal, 
+                    exercise_goal_text = EXCLUDED.exercise_goal_text,
+                    capsule_goal = EXCLUDED.capsule_goal,
+                    personal_notes = EXCLUDED.personal_notes, 
+                    last_updated = EXCLUDED.last_updated
             ''', (
                 user_id, data.get('displayName'), to_float_or_none(data.get('height')),
                 to_float_or_none(data.get('weight')), to_int_or_none(data.get('age')),
                 data.get('gender'), to_float_or_none(data.get('activityLevel')),
                 to_int_or_none(data.get('targetCalories')), to_int_or_none(data.get('waterGoal')),
-                to_int_or_none(data.get('exerciseGoal')), to_int_or_none(data.get('capsuleGoal')),
-                data.get('personalNotes'), today
+                to_int_or_none(data.get('exerciseGoal')),
+                data.get('exerciseGoalText'), # [NEW]
+                to_int_or_none(data.get('capsuleGoal')),
+                data.get('personalNotes'), 
+                now_utc # [MODIFIED]
             ))
             conn.commit()
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
@@ -196,10 +215,8 @@ def handle_profile():
             cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
             profile = cur.fetchone()
 
-            # [NEW] 解決新會員問題的核心邏輯
             if not profile:
                 print(f"新使用者，ID: {user_id}，正在建立預設試用期...")
-                # 設定預設7天試用期
                 default_termination_date = datetime.now(pytz.utc) + timedelta(days=7)
                 cur.execute(
                     "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s)",
@@ -207,24 +224,21 @@ def handle_profile():
                 )
                 conn.commit()
                 print(f"使用者 {user_id} 已建立，服務終止日為 {default_termination_date}")
-                # 重新查詢剛剛建立的使用者
                 cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
                 profile = cur.fetchone()
 
             if profile:
                 profile_dict = dict(profile)
-                if profile_dict.get('last_updated'):
-                    profile_dict['last_updated'] = profile_dict['last_updated'].strftime('%Y-%m-%d')
                 
-                # [MODIFIED] 格式化所有日期欄位回傳給前端
-                date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
+                # [MODIFIED] 格式化所有日期和時間欄位回傳給前端
+                date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
                 for field in date_fields:
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
                 return jsonify(profile_dict)
             
-            return jsonify({}) # 正常情況下因為上面會創建，比較不會走到這裡
+            return jsonify({})
     conn.close()
 
 
@@ -235,7 +249,6 @@ def handle_log():
         operator_id = request.headers.get('X-Operator-User-Id')
         if not operator_id: return jsonify({"error": "X-Operator-User-Id header is required"}), 400
         
-        # [MODIFIED] 使用新的權限檢查
         is_active, status = check_user_active(operator_id)
         if not is_active:
             return jsonify({"error": "Access denied. Your subscription may have expired.", "status": status}), 403
@@ -257,14 +270,31 @@ def handle_log():
             return jsonify({'status': 'success'})
 
         if request.method == 'GET':
+            # [MODIFIED] 擴充此端點以回傳前一天的體重
             user_id = request.args.get('userId')
-            log_date = request.args.get('date')
-            cur.execute('SELECT * FROM daily_logs WHERE user_id = %s AND log_date = %s', (user_id, log_date))
+            log_date_str = request.args.get('date')
+            
+            # 查詢當天日誌
+            cur.execute('SELECT * FROM daily_logs WHERE user_id = %s AND log_date = %s', (user_id, log_date_str))
             log_entry = cur.fetchone()
-            return jsonify(dict(log_entry) if log_entry else None)
+            
+            # 查詢前一天體重
+            try:
+                current_date = datetime.strptime(log_date_str, '%Y-%m-%d').date()
+                previous_date = current_date - timedelta(days=1)
+                cur.execute('SELECT daily_weight FROM daily_logs WHERE user_id = %s AND log_date = %s', (user_id, previous_date))
+                prev_day_log = cur.fetchone()
+                previous_day_weight = prev_day_log['daily_weight'] if prev_day_log and prev_day_log['daily_weight'] is not None else None
+            except (ValueError, TypeError):
+                previous_day_weight = None
+
+            response_data = {
+                "log_data": dict(log_entry) if log_entry else None,
+                "previous_day_weight": previous_day_weight
+            }
+            return jsonify(response_data)
     conn.close()
 
-# [MODIFIED] 以下兩個 API 也使用新的權限檢查
 @app.route('/api/completion_dots', methods=['GET'])
 def get_completion_dots():
     user_id = request.args.get('userId')
@@ -285,7 +315,6 @@ def get_trends():
     is_active, status = check_user_active(user_id)
     if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
 
-    # [MODIFIED] 更新日期區間處理邏輯以支援新的篩選條件
     range_param = request.args.get('range', '7days')
     today = datetime.now(TAIPEI_TZ).date()
     end_date = today
@@ -296,13 +325,10 @@ def get_trends():
         start_date = today - timedelta(days=27)
     else:
         try:
-            # 處理 'YYYY-MM-DD' 格式，用於 "28天會籍" 和 "自訂日期"
             start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
-            # 確保結束日期不會超過今天
             potential_end_date = start_date + timedelta(days=27)
             end_date = min(potential_end_date, today)
         except ValueError:
-            # 預設為 '7days'
             start_date = today - timedelta(days=6)
 
     conn = get_db_connection()
@@ -344,14 +370,13 @@ def get_all_users():
     if not is_admin(operator_id): return jsonify({"error": "Permission denied"}), 403
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # [MODIFIED] 查詢語句增加新欄位
-        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
+        # [MODIFIED] 查詢語句增加 last_updated 欄位以進行排序
+        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
         users = []
         now_utc = datetime.now(pytz.utc)
         for row in cur.fetchall():
             user = dict(row)
             
-            # [MODIFIED] 重寫後台狀態判斷邏輯
             term_date = user.get('service_termination_date')
             start_date = user.get('membership_start_date')
             end_date = user.get('expiry_timestamp')
@@ -363,8 +388,7 @@ def get_all_users():
             else:
                 user['computed_status'] = 'Trial'
             
-            # [MODIFIED] 格式化所有日期欄位
-            date_fields_to_format = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
+            date_fields_to_format = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
             for field in date_fields_to_format:
                 if user.get(field):
                     user[field] = user[field].astimezone(TAIPEI_TZ).isoformat()
@@ -383,13 +407,11 @@ def update_admin_profile():
     
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # 更新文字欄位 (邏輯不變)
         if 'adminNotes' in data:
             cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s', (data['adminNotes'], target_user_id))
         if 'adminNickname' in data:
             cur.execute('UPDATE user_profiles SET admin_nickname = %s WHERE user_id = %s', (data['adminNickname'], target_user_id))
 
-        # 處理日期欄位更新
         date_fields = {
             'membershipStartDate': 'membership_start_date',
             'expiryTimestamp': 'expiry_timestamp',
@@ -404,7 +426,6 @@ def update_admin_profile():
                     conn.close()
                     return jsonify({"error": f"Invalid format for {key}"}), 400
 
-        # 處理「終止服務」請求
         if data.get('terminate') is True:
             past_time = datetime.now(pytz.utc) - timedelta(minutes=1)
             cur.execute('UPDATE user_profiles SET service_termination_date = %s WHERE user_id = %s', (past_time, target_user_id))
@@ -412,7 +433,6 @@ def update_admin_profile():
 
         conn.commit()
         
-        # 返回更新後的完整用戶資料 (邏輯不變)
         cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user_raw = cur.fetchone()
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
