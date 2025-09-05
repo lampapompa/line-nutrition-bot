@@ -83,6 +83,11 @@
             </div>
         </div>
         
+        <div id="trial-banner" class="hidden bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-3 rounded-md" role="alert">
+            <p class="font-bold">試用體驗中</p>
+            <p class="text-sm">您目前為試用身份，歡迎聯繫教練以開通完整會籍服務！</p>
+        </div>
+        
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
             <nav class="flex justify-center -mb-px space-x-6" aria-label="Tabs">
                 <button onclick="switchTab('profile')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">個人檔案</button>
@@ -93,7 +98,10 @@
 
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
-                <div class="flex justify-between items-center"><p id="last-updated" class="text-xs text-gray-400"></p></div>
+                <div class="flex justify-between items-center flex-wrap gap-2">
+                    <div id="membership-dates-display" class="hidden text-sm text-gray-600 bg-green-100 px-3 py-1 rounded-full"></div>
+                    <p id="last-updated" class="text-xs text-gray-400"></p>
+                </div>
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">年齡</label><input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -234,9 +242,10 @@
             <div id="trends-tab" class="hidden space-y-4">
                  <div class="bg-white p-4 rounded-lg shadow">
                      <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
-                         <button onclick="updateChartRange('7days')" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                         <button onclick="updateChartRange('28days')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">28天課程</button>
-                         <button onclick="updateChartRange('this_month')" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">本月</button>
+                         <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                         <button id="course-range-btn" onclick="updateChartRange('course', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">本次課程</button>
+                         <button onclick="updateChartRange('28days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">28天課程</button>
+                         <button onclick="updateChartRange('this_month', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">本月</button>
                          <div class="flex items-center gap-1">
                              <label for="start-date-picker" class="text-xs">自訂開始日:</label>
                              <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
@@ -259,9 +268,9 @@
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
         let liffId = "2008021259-NLyg2AWl"; 
         
-        let userToLoad = null;      // 要載入資料的目標 User ID
-        let operatorId = null;      // 實際操作者的 User ID
-        let isViewingAsAdmin = false; // 是否為管理員視角
+        let userToLoad = null;
+        let operatorId = null;
+        let isViewingAsAdmin = false;
         let userProfileData = {};
         
         let currentDate = new Date();
@@ -283,7 +292,6 @@
                 console.error("API Error Response:", errorData);
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
-            // 修正：檢查回應是否為空，因為某些成功回應可能沒有 body
             const text = await response.text();
             return text ? JSON.parse(text) : {};
         }
@@ -410,17 +418,31 @@
             await loadLogDataForDate(currentDate);
         }
         
-        async function updateChartRange(range) {
+        // [MODIFIED] 更新圖表範圍的函式，以處理 "本次課程"
+        async function updateChartRange(range, element = null) {
             document.querySelectorAll('.range-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-emerald-500', 'text-white');
                 btn.classList.add('bg-gray-200');
             });
-             if (event && event.currentTarget.tagName === 'BUTTON') {
-                 event.currentTarget.classList.add('active', 'bg-emerald-500', 'text-white');
-                 event.currentTarget.classList.remove('bg-gray-200');
-                 document.getElementById('start-date-picker').value = '';
+             if (element) {
+                 element.classList.add('active', 'bg-emerald-500', 'text-white');
+                 element.classList.remove('bg-gray-200');
+                 if (element.tagName !== 'BUTTON') { // 如果是日期選擇器觸發的
+                    // 取消所有按鈕的 active 狀態
+                    document.querySelectorAll('.range-btn').forEach(btn => {
+                        btn.classList.remove('active', 'bg-emerald-500', 'text-white');
+                        btn.classList.add('bg-gray-200');
+                    });
+                 } else { // 如果是按鈕觸發的
+                    document.getElementById('start-date-picker').value = '';
+                 }
              }
-            await renderChart(range);
+
+            let finalRange = range;
+            if (range === 'course' && userProfileData.membership_start_date) {
+                finalRange = userProfileData.membership_start_date.split('T')[0];
+            }
+            await renderChart(finalRange);
         }
         
         function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
@@ -659,8 +681,7 @@
             document.getElementById('prev-month-btn').addEventListener('click', showPrevMonth);
             document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
             document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
-            document.querySelectorAll('.range-btn').forEach(btn => btn.addEventListener('click', () => updateChartRange(btn.getAttribute('onclick').match(/'(.*?)'/)[1])));
-            document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value));
+            document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value, e.target));
             document.getElementById('ex-type').addEventListener('input', estimateExerciseCalories);
             document.getElementById('ex-duration').addEventListener('input', estimateExerciseCalories);
             
@@ -677,6 +698,7 @@
             });
         }
         
+        // [MODIFIED] 主啟動函式，包含新的狀態處理邏輯
         async function main() {
             try {
                 await liff.init({ liffId });
@@ -701,16 +723,37 @@
                     userProfileData.displayName = profile.displayName;
                 }
 
+                // [MODIFIED] 新的權限檢查和介面控制
                 if (!isViewingAsAdmin) {
+                    // 這一步同時會觸發後端為新用戶建立檔案
                     const statusRes = await fetchAPI(`/api/check_status?userId=${userToLoad}`);
-                    if (!statusRes.isActive) {
+                    
+                    if (!statusRes.isActive) { // isActive: false 代表 Terminated 狀態
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('access-denied').classList.remove('hidden');
                         return;
                     }
+                    if (statusRes.status === 'Trial') {
+                        document.getElementById('trial-banner').classList.remove('hidden');
+                    }
                 }
 
-                await loadProfileData();
+                // 載入完整的個人檔案 (包含後端可能剛建立的資料)
+                await loadProfileData(); 
+                
+                // [MODIFIED] 根據狀態顯示會籍期間和圖表按鈕
+                // 此處檢查確保是 Active 狀態才顯示相關資訊
+                const statusCheck = isViewingAsAdmin ? await fetchAPI(`/api/check_status?userId=${userToLoad}`) : { status: document.getElementById('trial-banner').classList.contains('hidden') ? 'Active' : 'Trial' };
+                if (statusCheck.status === 'Active' && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
+                    const startDate = new Date(userProfileData.membership_start_date);
+                    const endDate = new Date(userProfileData.expiry_timestamp);
+                    const startDateStr = startDate.toLocaleDateString('zh-TW');
+                    const endDateStr = endDate.toLocaleDateString('zh-TW');
+                    const displayDiv = document.getElementById('membership-dates-display');
+                    displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
+                    displayDiv.classList.remove('hidden');
+                    document.getElementById('course-range-btn').classList.remove('hidden');
+                }
                 
                 // 自動同步名稱邏輯
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
@@ -723,7 +766,6 @@
                             })
                         });
                         userProfileData.display_name = profile.displayName;
-                        console.log('名稱自動同步成功！');
                     } catch (error) {
                         console.error('名稱自動同步失敗:', error);
                     }
