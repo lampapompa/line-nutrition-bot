@@ -104,8 +104,46 @@ def init_db():
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
 
-# [MODIFIED] 修正會員狀態判斷的 Bug
+# [ADDED] 優化：建立一個統一的、可共用的會員狀態判斷函式
+def get_user_status(user_profile):
+    """
+    根據使用者資料物件判斷其會員狀態。
+    返回一個代表狀態的字串。
+    """
+    if not user_profile:
+        return "Trial" # 如果沒有 profile 紀錄，視為新來的試用者
+
+    now_utc = datetime.now(pytz.utc)
+    term_date = user_profile.get('service_termination_date')
+    start_date = user_profile.get('membership_start_date')
+    end_date = user_profile.get('expiry_timestamp')
+
+    # 優先級 1: 被手動終止服務
+    if term_date and term_date <= now_utc:
+        return "Terminated"
+
+    # 優先級 2: 會籍尚未開始
+    if start_date and start_date > now_utc:
+        return "Attention"
+
+    # 優先級 3: 付費會籍有效期間內
+    if end_date and end_date >= now_utc:
+        return "Active"
+
+    # 優先級 4: 付費會籍已過期
+    if end_date and end_date < now_utc:
+        return "Expired"
+        
+    # 優先級 5: 以上皆非，視為試用期
+    # (包含了新用戶自動獲得的7天 service_termination_date)
+    return "Trial"
+
+
+# [MODIFIED] BUG FIX & 優化: 重構 check_user_active，使其呼叫新的共用函式
 def check_user_active(user_id):
+    """
+    檢查使用者是否可用服務，返回 (布林值, 狀態字串)
+    """
     if is_admin(user_id):
         return (True, "Admin")
 
@@ -115,25 +153,12 @@ def check_user_active(user_id):
         user = cur.fetchone()
     conn.close()
 
-    if not user:
-        return (True, "Trial")
-
-    now_utc = datetime.now(pytz.utc)
-
-    # 1. 最高優先級：檢查服務是否已被手動終止
-    if user['service_termination_date'] and user['service_termination_date'] <= now_utc:
-        return (False, "Terminated")
-
-    # 2. 檢查是否為有效付費會員
-    if user['expiry_timestamp'] and user['expiry_timestamp'] >= now_utc:
-        return (True, "Active")
+    status = get_user_status(user)
     
-    # 3. [BUG FIX] 新增對「已過期」狀態的明確判斷
-    if user['expiry_timestamp'] and user['expiry_timestamp'] < now_utc:
-        return (False, "Expired")
-        
-    # 4. 如果以上條件都不滿足，則視為試用期
-    return (True, "Trial")
+    # 服務有效的狀態包含: Admin, Active, Trial, Attention (尚未開始也算有效，可以先填資料)
+    is_active = status in ["Admin", "Active", "Trial", "Attention"]
+    
+    return (is_active, status)
 
 
 # --- 頁面路由 ---
@@ -181,8 +206,8 @@ def handle_profile():
     is_active, status = check_user_active(user_id)
     operator_id = request.headers.get('X-Operator-User-Id')
     
+    # [MODIFIED] BUG FIX: 現在的 is_active 判斷已修正且更精準
     if request.method == 'GET' and not is_active and not is_admin(operator_id):
-        # [MODIFIED] 修正後，這裡可以正確攔截到 "Expired" 和 "Terminated" 狀態
         return jsonify({"error": "Access denied. Your subscription is inactive.", "status": status}), 403
 
     conn = get_db_connection()
@@ -224,13 +249,15 @@ def handle_profile():
 
             if not profile:
                 print(f"新使用者，ID: {user_id}，正在建立預設試用期...")
-                default_termination_date = datetime.now(pytz.utc) + timedelta(days=7)
+                # [MODIFIED] BUG FIX: 新用戶只設定 service_termination_date，不設定 expiry_timestamp
+                # 這樣 get_user_status 才能正確判斷為 Trial
+                default_trial_end_date = datetime.now(pytz.utc) + timedelta(days=7)
                 cur.execute(
                     "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s)",
-                    (user_id, default_termination_date)
+                    (user_id, default_trial_end_date)
                 )
                 conn.commit()
-                print(f"使用者 {user_id} 已建立，服務終止日為 {default_termination_date}")
+                print(f"使用者 {user_id} 已建立，服務終止日為 {default_trial_end_date}")
                 cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
                 profile = cur.fetchone()
 
@@ -242,6 +269,7 @@ def handle_profile():
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
+                # [MODIFIED] BUG FIX & 優化: 直接使用修正後的 check_user_active 結果
                 _is_active, status_string = check_user_active(user_id)
                 profile_dict['status'] = status_string
 
@@ -395,21 +423,38 @@ def get_trends():
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # [MODIFIED] 根據您的最新需求，將所有 NULL 值都轉為 0，以確保折線圖連續
+        # [MODIFIED] 優化：SQL查詢現在同時計算平均值，提升效能
         cur.execute('''
+            WITH PeriodLogs AS (
+                SELECT 
+                    log_date, 
+                    daily_weight, 
+                    (COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0)) as calories, 
+                    COALESCE(water_cc, 0) as water_cc, 
+                    COALESCE(exercise_kcal, 0) as exercise_kcal, 
+                    COALESCE(capsule_qty, 0) as capsule_qty
+                FROM daily_logs 
+                WHERE user_id = %s AND log_date BETWEEN %s AND %s
+            )
             SELECT 
-                log_date, 
-                daily_weight, 
-                COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories, 
-                COALESCE(water_cc, 0) as water_cc, 
-                COALESCE(exercise_kcal, 0) as exercise_kcal, 
-                COALESCE(capsule_qty, 0) as capsule_qty
-            FROM daily_logs 
-            WHERE user_id = %s AND log_date BETWEEN %s AND %s 
-            ORDER BY log_date ASC
+                (SELECT json_agg(t) FROM PeriodLogs t) as logs,
+                (SELECT AVG(daily_weight) FROM PeriodLogs WHERE daily_weight IS NOT NULL AND daily_weight > 0) as avg_weight,
+                (SELECT AVG(calories) FROM PeriodLogs) as avg_calories,
+                (SELECT AVG(water_cc) FROM PeriodLogs) as avg_water,
+                (SELECT AVG(capsule_qty) FROM PeriodLogs) as avg_capsule
         ''', (user_id, start_date, end_date))
-        logs = cur.fetchall()
+        result = cur.fetchone()
     conn.close()
+    
+    logs = result['logs'] if result and result['logs'] else []
+    
+    # [ADDED] 優化：將計算好的平均值打包起來
+    averages = {
+        "weight": result['avg_weight'] if result else None,
+        "calories": result['avg_calories'] if result else None,
+        "water": result['avg_water'] if result else None,
+        "capsule": result['avg_capsule'] if result else None,
+    }
 
     total_days = (end_date - start_date).days + 1
     labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range(total_days)]
@@ -422,7 +467,9 @@ def get_trends():
         'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'exercise_kcal': 0}).get('exercise_kcal') for i in range(total_days)],
         'capsule': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'capsule_qty': 0}).get('capsule_qty') for i in range(total_days)]
     }
-    return jsonify({ 'labels': labels, **trend_data })
+
+    # [MODIFIED] 優化：將平均值物件加入最終回傳的 JSON 中
+    return jsonify({ 'labels': labels, **trend_data, 'averages': averages })
 
 
 # --- 管理員專用 API ---
@@ -440,26 +487,11 @@ def get_all_users():
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
         users = []
-        now_utc = datetime.now(pytz.utc)
         for row in cur.fetchall():
             user = dict(row)
             
-            term_date = user.get('service_termination_date')
-            start_date = user.get('membership_start_date')
-            end_date = user.get('expiry_timestamp')
-
-            # [MODIFIED] 修正並優化後台狀態判斷邏輯，確保優先級正確
-            if term_date and term_date <= now_utc:
-                user['computed_status'] = 'Terminated'
-            elif start_date and start_date > now_utc:
-                user['computed_status'] = 'Attention'
-            elif end_date and end_date >= now_utc:
-                user['computed_status'] = 'Active'
-            # [BUG FIX] 新增後台對「已過期」狀態的判斷
-            elif end_date and end_date < now_utc:
-                user['computed_status'] = 'Expired'
-            else:
-                user['computed_status'] = 'Trial'
+            # [MODIFIED] 優化：呼叫統一的狀態判斷函式，確保邏輯一致
+            user['computed_status'] = get_user_status(user)
             
             date_fields_to_format = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
             for field in date_fields_to_format:
@@ -511,23 +543,8 @@ def update_admin_profile():
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
         
         if updated_user:
-            now_utc_for_status = datetime.now(pytz.utc)
-            term_date = updated_user.get('service_termination_date')
-            start_date = updated_user.get('membership_start_date')
-            end_date = updated_user.get('expiry_timestamp')
-            
-            # [MODIFIED] 同步更新此處的狀態判斷邏輯，確保與會員列表一致
-            if term_date and term_date <= now_utc_for_status:
-                updated_user['computed_status'] = 'Terminated'
-            elif start_date and start_date > now_utc_for_status:
-                updated_user['computed_status'] = 'Attention'
-            elif end_date and end_date >= now_utc_for_status:
-                updated_user['computed_status'] = 'Active'
-            # [BUG FIX] 新增後台對「已過期」狀態的判斷
-            elif end_date and end_date < now_utc_for_status:
-                updated_user['computed_status'] = 'Expired'
-            else:
-                updated_user['computed_status'] = 'Trial'
+            # [MODIFIED] 優化：呼叫統一的狀態判斷函式，確保邏輯一致
+            updated_user['computed_status'] = get_user_status(updated_user)
 
             date_fields_to_format_return = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
             for field in date_fields_to_format_return:
