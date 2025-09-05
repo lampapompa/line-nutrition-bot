@@ -25,13 +25,8 @@
         .calendar-day.completed .completion-dot { display: block; }
         .goal-button { transition: all 0.2s; }
         .goal-button.selected { background-color: #10B981; color: white; border-color: #10B981; }
-        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
-        .modal-content { background-color: #fefefe; margin: 25% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 10px; }
-        .close-btn { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
         .range-btn.active { background-color: #10B981; color: white; }
         input[type="date"]::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
-
-        /* --- 新增的 CSS 樣式 --- */
         .tall-input { padding-top: 0.75rem; padding-bottom: 0.75rem; }
         .quick-add-btn {
             background-color: #e5e7eb; color: #4b5563;
@@ -39,7 +34,6 @@
             border-radius: 0.375rem; transition: background-color 0.2s;
         }
         .quick-add-btn:hover { background-color: #d1d5db; }
-
         .progress-bar-container {
             background-color: #e5e7eb; border-radius: 9999px;
             height: 8px; width: 100%; overflow: hidden;
@@ -51,9 +45,20 @@
         .progress-bar-green { background-color: #22c55e; }
         .progress-bar-yellow { background-color: #f59e0b; }
         .progress-bar-red { background-color: #ef4444; }
+        
+        /* [NEW] Toast 提示樣式 */
+        .toast {
+            visibility: hidden; min-width: 150px; margin-left: -75px; background-color: #333;
+            color: #fff; text-align: center; border-radius: 6px; padding: 10px 16px;
+            position: fixed; z-index: 101; left: 50%; bottom: 60px;
+            opacity: 0; transition: visibility 0s 2.5s, opacity 0.5s linear, bottom 0.5s ease-out;
+        }
+        .toast.show {
+            visibility: visible; opacity: 1; bottom: 80px; transition: opacity 0.5s linear, bottom 0.5s ease-out;
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="bg-gray-50 text-gray-800 pb-24">
 
     <div id="loading" class="flex justify-center items-center h-screen">
         <div class="text-center">
@@ -158,7 +163,7 @@
                     <label class="block text-sm font-medium">個人備註</label>
                     <textarea id="personal-notes" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" rows="3" placeholder="例如：對花生過敏、不吃牛肉"></textarea>
                 </div>
-                </div>
+            </div>
 
             <div id="log-tab" class="hidden space-y-4">
                 <div id="goal-dashboard-new" class="bg-white p-3 rounded-lg shadow-sm space-y-3">
@@ -173,8 +178,7 @@
                         </div>
                     </div>
                     <div class="grid grid-cols-3 gap-2">
-                        <div class="p-2 rounded-lg bg-blue-50">
-                            <p class="text-xs font-medium text-gray-700">飲水 (c.c.)</p>
+                        <div class="p-2 rounded-lg bg-pink-50"> <p class="text-xs font-medium text-gray-700">飲水 (c.c.)</p>
                             <div class="progress-bar-container my-1">
                                 <div id="water-progress" class="progress-bar"></div>
                             </div>
@@ -218,16 +222,31 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日飲水 (c.c.)</label>
                         <div class="flex items-center gap-2 mt-1">
-                            <input data-field="water_cc" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md">
+                            <div class="relative flex-grow">
+                                <input data-field="water_cc" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8">
+                                <button onclick="clearInput('water_cc', 0)" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600" aria-label="清除飲水">
+                                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
                             <button class="quick-add-btn" data-amount="250">+250cc</button>
                             <button class="quick-add-btn" data-amount="500">+500cc</button>
                         </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">今日運動</label>
-                        <div class="flex gap-2">
-                             <input data-field="exercise_text" type="text" class="log-input tall-input mt-1 block w-3/4 border-gray-300 rounded-md" placeholder="範例：跑步30分">
-                             <input data-field="exercise_kcal" type="number" class="log-input tall-input mt-1 block w-1/4 border-gray-300 rounded-md" placeholder="消耗kcal">
+                        <div class="flex items-center gap-2">
+                            <div class="relative flex-grow">
+                                <input data-field="exercise_text" type="text" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="範例：跑步30分">
+                                <button onclick="clearExercise()" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600" aria-label="清除運動項目">
+                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <div class="relative w-1/3">
+                                <input data-field="exercise_kcal" type="number" class="log-input tall-input mt-1 block w-full border-gray-300 rounded-md pr-8" placeholder="消耗kcal">
+                                <button onclick="clearInput('exercise_kcal', 0)" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600" aria-label="清除運動熱量">
+                                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
                         </div>
                         <div id="quick-add-exercise" class="flex flex-wrap gap-2 mt-2">
                             </div>
@@ -255,19 +274,22 @@
                      <canvas id="trendsChart"></canvas>
                      <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
                          <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
-                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2"> 飲水</label>
-                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3"> 運動消耗</label>
+                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
+                         <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
                      </div>
                  </div>
             </div>
         </div>
     </div>
     
+    <div id="toast" class="toast"></div>
+
     <footer class="text-center p-4 mt-4 text-xs text-gray-400 border-t border-gray-200">
         <div class="flex justify-center space-x-6">
             <button id="get-user-id-btn" class="hover:underline">取得 User ID</button>
             <a href="/admin" target="_blank" class="hover:underline">進入管理員模式</a>
         </div>
+        <p id="calc-footnote" class="mt-2 text-gray-500" style="display: none;">運動熱量消耗依據您的個人身體數據及MET運動強度進行估算。</p>
     </footer>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -284,14 +306,14 @@
         let currentDate = new Date();
         let autosaveTimer = null;
         let trendsChart = null;
-        let profileAutosaveTimer = null; // [NEW] 用於個人檔案的自動儲存計時器
+        let profileAutosaveTimer = null; 
+        let currentExerciseSession = []; // [NEW] 累加運動的暫存清單
 
-        // [NEW] 快速運動按鈕的設定
-        const EXERCISE_METS = { '跑步': 8.0, '快走': 4.3, '散步': 3.5 };
+        const EXERCISE_METS = { '跑步': 8.0, '快走': 4.3, '散步': 3.5, '瑜珈': 2.5 };
         const exercisePresets = [
-            { type: '跑步', duration: 10 }, { type: '跑步', duration: 30 },
-            { type: '快走', duration: 30 }, { type: '快走', duration: 60 },
-            { type: '散步', duration: 30 }, { type: '散步', duration: 60 },
+            { type: '跑步', duration: 10 }, 
+            { type: '快走', duration: 15 }, 
+            { type: '散步', duration: 15 },
         ];
         
         // --- 2. 輔助函式 ---
@@ -313,11 +335,18 @@
             return text ? JSON.parse(text) : {};
         }
 
+        // [NEW] Toast 提示函式
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            toast.textContent = message;
+            toast.classList.add("show");
+            setTimeout(() => { toast.classList.remove("show"); }, 2500);
+        }
+
         // --- 3. 核心功能函式 ---
-        // [MODIFIED] 移除 alert，並增加可選的回呼函式
         async function saveProfileData(callback) {
             if (!userToLoad) return;
-            // 從 UI input 中收集最新的資料
             const profileData = {
                 displayName: userProfileData.displayName,
                 height: document.getElementById('height').value,
@@ -336,21 +365,19 @@
                     method: 'POST',
                     body: JSON.stringify({ data: profileData })
                 });
-                console.log("個人檔案已自動儲存！");
-                // 儲存成功後，執行回呼函式 (例如重新載入資料)
+                showToast('✓ 已儲存'); // 使用 Toast 提示
                 if (callback) callback();
             } catch (error) {
                 console.error("儲存個人檔案失敗:", error);
+                showToast('儲存失敗');
             }
         }
         
-        // [NEW] 用於觸發個人檔案自動儲存的函式
         function triggerProfileAutosave() {
             clearTimeout(profileAutosaveTimer);
             profileAutosaveTimer = setTimeout(() => {
-                // 儲存成功後，重新載入資料以確保目標熱量等計算是同步的
                 saveProfileData(loadProfileData);
-            }, 1500); // 輸入停止後 1.5 秒儲存
+            }, 1500);
         }
 
         async function loadProfileData() {
@@ -374,7 +401,6 @@
 
                 document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
                 if (userProfileData.target_calories) {
-                    // [MODIFIED] Bug fix: 確保比對時是數字型別
                     const selectedBtn = Array.from(document.querySelectorAll('.goal-button')).find(btn => Number(btn.dataset.finalKcal) === Number(userProfileData.target_calories));
                     if (selectedBtn) selectedBtn.classList.add('selected');
                 }
@@ -403,10 +429,12 @@
                             data: logData 
                         })
                     });
+                    showToast('✓ 已儲存紀錄');
                     const dayEl = document.querySelector(`.calendar-day[data-day='${currentDate.getDate()}']`);
                     if(dayEl) dayEl.classList.add('completed');
                 } catch (error) {
                     console.error(`自動儲存 ${formatDate(currentDate)} 的資料失敗:`, error);
+                    showToast('紀錄儲存失敗');
                 }
             }, 1500);
         }
@@ -425,6 +453,7 @@
             } catch (error) {
                 console.error(`讀取 ${formatDate(date)} 的資料失敗:`, error);
             } finally {
+                currentExerciseSession = []; // 切換日期時清空運動暫存
                 updateGoalDashboard();
             }
         }
@@ -476,7 +505,14 @@
             document.getElementById(tabName + '-tab').classList.remove('hidden');
             const button = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
             button.classList.add('active', 'text-gray-900');
-            if (tabName === 'trends') renderChart();
+            if (tabName === 'trends') {
+                 document.getElementById('calc-footnote').style.display = 'none';
+                 renderChart();
+            } else if (tabName === 'log') {
+                document.getElementById('calc-footnote').style.display = 'block';
+            } else {
+                document.getElementById('calc-footnote').style.display = 'none';
+            }
         }
 
         function estimateExerciseCalories() {
@@ -507,11 +543,13 @@
             if (height > 0 && weight > 0 && age > 0) {
                 let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
                 bmr = Math.round(bmr);
+                userProfileData.bmr = bmr; // [NEW] Save BMR for calculations
                 let tdee = Math.round(bmr * activityLevel);
                 document.getElementById('bmr-display').textContent = `${bmr} kcal`;
                 document.getElementById('tdee-display').textContent = `${tdee} kcal`;
                 updateGoalOptions(tdee);
             } else {
+                userProfileData.bmr = null;
                 document.getElementById('bmr-display').textContent = '---';
                 document.getElementById('tdee-display').textContent = '---';
                 updateGoalOptions(null);
@@ -543,14 +581,14 @@
             const finalKcal = selectedButton.dataset.finalKcal;
             if (finalKcal) {
                 document.getElementById('target-calories').value = finalKcal;
-                userProfileData.target_calories = finalKcal; // [MODIFIED] Bug fix: 同步到全域變數
                 updateGoalDashboard();
-                triggerProfileAutosave(); // [MODIFIED] Bug fix: 觸發自動儲存
+                triggerProfileAutosave();
             }
         }
         
         function updateGoalDashboard() {
-            const goalCalories = parseInt(document.getElementById('target-calories').value) || 0;
+            userProfileData.target_calories = document.getElementById('target-calories').value; // [FIX] Sync from input
+            const goalCalories = parseInt(userProfileData.target_calories) || 0;
             const goalWater = parseInt(userProfileData.water_goal) || 0;
             const goalExercise = parseInt(userProfileData.exercise_goal) || 0;
             const goalCapsule = parseInt(userProfileData.capsule_goal) || 0;
@@ -653,14 +691,14 @@
                         datasets: [
                             { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true },
                             { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: false, yAxisID: 'yKcal' },
-                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: true, yAxisID: 'yKcal' },
-                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: true, yAxisID: 'yKcal' }
+                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: false, yAxisID: 'yKcal' }, // [MODIFIED]
+                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: false, yAxisID: 'yKcal' } // [MODIFIED]
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        aspectRatio: 1, // [MODIFIED] 調整長寬比為 1:1 (更方正)
+                        aspectRatio: 1, // [MODIFIED]
                         scales: {
                             yWeight: { 
                                 type: 'linear', 
@@ -669,7 +707,7 @@
                                 min: minWeight,
                                 max: maxWeight,
                                 ticks: {
-                                    stepSize: 0.1 // [MODIFIED] 設定 Y 軸刻度為 0.1
+                                    stepSize: 0.1 // [MODIFIED]
                                 }
                             },
                             yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.' }, grid: { drawOnChartArea: false } }
@@ -684,8 +722,22 @@
         }
 
         // --- 5. 應用程式啟動流程 ---
+        // [NEW] 清除輸入框的通用函式
+        function clearInput(fieldName, defaultValue = '') {
+            const input = document.querySelector(`[data-field="${fieldName}"]`);
+            if (input) {
+                input.value = defaultValue;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
+        function clearExercise() {
+            currentExerciseSession = [];
+            clearInput('exercise_text', '');
+            clearInput('exercise_kcal', '');
+        }
+
         function setupEventListeners() {
-            // [MODIFIED] 個人檔案的輸入框改為觸發自動儲存
             document.querySelectorAll('.profile-input').forEach(el => {
                 el.addEventListener('input', () => {
                     updateProfileCalculations();
@@ -694,7 +746,6 @@
             });
 
             document.querySelectorAll('.goal-button').forEach(btn => btn.addEventListener('click', (e) => selectGoal(e)));
-            // document.getElementById('save-profile-button').addEventListener('click', saveProfileData); // [REMOVED]
             document.querySelectorAll('.log-input').forEach(el => el.addEventListener('input', handleLogInputChange));
             document.getElementById('prev-month-btn').addEventListener('click', showPrevMonth);
             document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
@@ -713,24 +764,30 @@
                 });
             });
 
-            // [NEW] 快速新增運動按鈕事件
+            // [NEW] 快速新增運動按鈕事件 (累加版)
             document.getElementById('quick-add-exercise').addEventListener('click', (event) => {
-                if (event.target.tagName !== 'BUTTON') return;
-                const button = event.target;
-                const type = button.dataset.type;
-                const duration = parseInt(button.dataset.duration);
-                const weight = parseFloat(userProfileData.profile_weight) || 60; // 預設 60kg
-                const met = EXERCISE_METS[type];
-                if (met && weight > 0) {
-                    const calories = Math.round(met * weight * (duration / 60));
-                    const textInput = document.querySelector('[data-field="exercise_text"]');
-                    const kcalInput = document.querySelector('[data-field="exercise_kcal"]');
-                    textInput.value = `${type} ${duration}分鐘`;
-                    kcalInput.value = calories;
-                    // 手動觸發 input 事件，以更新儀表板和觸發自動儲存
-                    textInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
+                const target = event.target.closest('button');
+                if (!target) return;
+
+                const type = target.dataset.type;
+                const duration = parseInt(target.dataset.duration);
+                
+                // 檢查個人資料是否完整
+                const bmr = userProfileData.bmr;
+                if (!bmr) {
+                    alert("請先到「個人檔案」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
+                    switchTab('profile');
+                    return;
                 }
+
+                // 檢查運動是否已在清單中
+                const existingExercise = currentExerciseSession.find(ex => ex.type === type);
+                if (existingExercise) {
+                    existingExercise.duration += duration;
+                } else {
+                    currentExerciseSession.push({ type, duration });
+                }
+                updateExerciseInputs();
             });
 
             // [NEW] 頁尾按鈕事件
@@ -746,13 +803,41 @@
             });
         }
         
-        // [NEW] 渲染快速運動按鈕
+        // [NEW] 渲染快速運動按鈕 (累加版)
         function renderQuickExerciseButtons() {
             const container = document.getElementById('quick-add-exercise');
             if (!container) return;
             container.innerHTML = exercisePresets.map(item => 
-                `<button class="quick-add-btn" data-type="${item.type}" data-duration="${item.duration}">${item.type} ${item.duration}分</button>`
+                `<button class="quick-add-btn" data-type="${item.type}" data-duration="${item.duration}">${item.type} +${item.duration}分</button>`
             ).join('');
+        }
+        
+        // [NEW] 更新運動輸入框的函式
+        function updateExerciseInputs() {
+            let totalCalories = 0;
+            let textParts = [];
+
+            const bmr = userProfileData.bmr;
+            if (!bmr) return; // 如果沒有 BMR，無法計算
+
+            currentExerciseSession.forEach(ex => {
+                const met = EXERCISE_METS[ex.type];
+                if (met) {
+                    const calories = Math.round((bmr / 24) * met * (ex.duration / 60));
+                    totalCalories += calories;
+                    textParts.push(`${ex.type} ${ex.duration}分鐘`);
+                }
+            });
+
+            const textInput = document.querySelector('[data-field="exercise_text"]');
+            const kcalInput = document.querySelector('[data-field="exercise_kcal"]');
+            
+            textInput.value = textParts.join('、');
+            kcalInput.value = totalCalories > 0 ? totalCalories : '';
+            
+            // 手動觸發 input 事件，以更新儀表板和觸發自動儲存
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            kcalInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
         
         async function main() {
@@ -793,8 +878,8 @@
 
                 await loadProfileData(); 
                 
-                const statusCheck = isViewingAsAdmin ? await fetchAPI(`/api/check_status?userId=${userToLoad}`) : { status: document.getElementById('trial-banner').classList.contains('hidden') ? 'Active' : 'Trial' };
-                if (statusCheck.status === 'Active' && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
+                // [FIX] 修正會籍期間顯示邏輯
+                if (!document.getElementById('trial-banner').classList.contains('hidden') === false && userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
                     const startDate = new Date(userProfileData.membership_start_date);
                     const endDate = new Date(userProfileData.expiry_timestamp);
                     const startDateStr = startDate.toLocaleDateString('zh-TW');
@@ -802,7 +887,6 @@
                     const displayDiv = document.getElementById('membership-dates-display');
                     displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
                     displayDiv.classList.remove('hidden');
-                    document.getElementById('course-range-btn').classList.remove('hidden');
                 }
                 
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
@@ -826,11 +910,11 @@
                      }
                 }
                 
-                // [NEW] 渲染快速運動按鈕
                 renderQuickExerciseButtons();
 
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
                 document.getElementById('log-tab').classList.remove('hidden');
+                document.getElementById('calc-footnote').style.display = 'block';
                 
                 await loadLogDataForDate(currentDate);
                 await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
