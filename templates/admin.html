@@ -15,7 +15,6 @@
         .toast.show {
             visibility: visible; opacity: 1; transition: opacity 0.5s linear;
         }
-        /* [REMOVED] 移除舊的 placeholder CSS hack，因為不再使用 */
     </style>
 </head>
 <body class="bg-gray-100">
@@ -90,7 +89,6 @@
             const displayName = user.display_name || '(新用戶)';
             const adminNickname = user.admin_nickname || '';
 
-            // [MODIFIED] 格式化時間以符合 <input type="datetime-local"> 的 value 格式
             const formatForInput = (isoString) => isoString ? isoString.substring(0, 16) : '';
             const startValue = formatForInput(user.membership_start_date);
             const endValue = formatForInput(user.expiry_timestamp);
@@ -98,12 +96,16 @@
 
             let statusClass = '';
             let statusText = '';
+            // [MODIFIED] 新增「注意」狀態的判斷與樣式
             if (user.computed_status === 'Active') {
                 statusClass = 'bg-green-200 text-green-800';
                 statusText = '有效';
             } else if (user.computed_status === 'Trial') {
                 statusClass = 'bg-blue-200 text-blue-800';
                 statusText = '試用';
+            } else if (user.computed_status === 'Attention') {
+                statusClass = 'bg-orange-200 text-orange-800';
+                statusText = '注意';
             } else if (user.computed_status === 'Terminated') {
                 statusClass = 'bg-red-200 text-red-800';
                 statusText = '已終止';
@@ -112,9 +114,7 @@
                 statusText = '未知';
             }
 
-            // --- TEMPLATE MODIFICATION START ---
-            // [修正] 將所有日期輸入框從 type="text" 的 hack 改為標準的 type="datetime-local"
-            // 這會解決手機上無法點開的問題。外觀上，未設定時會是空白，而不是顯示 "未設定"。
+            // [MODIFIED] 將日期輸入框改為標準的 datetime-local，解決手機版問題
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
                     <td class="py-3 px-4 pt-5">
@@ -168,7 +168,6 @@
                     </td>
                 </tr>
             `;
-            // --- TEMPLATE MODIFICATION END ---
         }
 
         function updateRowUI(userId, updatedUserData) {
