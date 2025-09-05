@@ -46,8 +46,8 @@
                         <th class="py-3 px-4 text-left">LINE 名稱</th>
                         <th class="py-3 px-4 text-left">管理員暱稱</th>
                         <th class="py-3 px-4 text-left">狀態</th>
-                        <th class="py-3 px-6 text-left min-w-[550px]">權限設定</th>
                         <th class="py-3 px-4 text-left">教練備註</th>
+                        <th class="py-3 px-6 text-left min-w-[480px]">權限設定</th>
                     </tr>
                 </thead>
                 <tbody id="user-list-body" class="text-gray-700">
@@ -95,18 +95,15 @@
             }
         }
         
-        // [MODIFIED] 全新渲染會員列的函式
         function renderUserRow(user) {
             const displayName = user.display_name || '(新用戶)';
             const adminNickname = user.admin_nickname || '';
 
-            // 處理日期格式，以便放入 datetime-local 輸入框
             const formatForInput = (isoString) => isoString ? isoString.substring(0, 16) : '';
             const startValue = formatForInput(user.membership_start_date);
             const endValue = formatForInput(user.expiry_timestamp);
             const termValue = formatForInput(user.service_termination_date);
 
-            // 狀態與顏色判斷邏輯
             let statusClass = '';
             let statusText = '';
             if (user.computed_status === 'Active') {
@@ -123,7 +120,7 @@
                 statusText = '未知';
             }
 
-            // [MODIFIED] 全新的 HTML 結構
+            // [MODIFIED] 調整 HTML 結構與 Class
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
                     <td class="py-3 px-4 pt-5">
@@ -131,7 +128,7 @@
                             ${displayName}
                         </a>
                     </td>
-                    <td class="py-3 px-4 pt-5">
+                    <td class="py-3 px-4 pt-5 min-w-[150px]">
                         <input type="text" value="${adminNickname}" 
                                onchange="handleFieldUpdate('${user.user_id}', 'adminNickname', this.value)"
                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
@@ -141,6 +138,12 @@
                         <span class="px-2 py-1 font-semibold leading-tight rounded-full text-xs ${statusClass}">
                             ${statusText}
                         </span>
+                    </td>
+                    <td class="py-3 px-4 pt-5 min-w-[150px]">
+                        <input type="text" value="${user.admin_notes || ''}" 
+                               onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
+                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                               placeholder="新增備註...">
                     </td>
                     <td class="py-3 px-6 space-y-2">
                         <div class="flex items-center space-x-2">
@@ -172,12 +175,6 @@
                             <button onclick="handleTerminate('${user.user_id}')" class="bg-red-600 text-white px-3 py-1 text-xs rounded hover:bg-red-700 transition-colors">立即終止服務</button>
                         </div>
                     </td>
-                    <td class="py-3 px-4 pt-5">
-                        <input type="text" value="${user.admin_notes || ''}" 
-                               onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
-                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                               placeholder="新增備註...">
-                    </td>
                 </tr>
             `;
         }
@@ -194,16 +191,13 @@
               }
         }
         
-        // [NEW] 通用的欄位更新函式
         async function handleFieldUpdate(userId, fieldName, value) {
             const payload = { [fieldName]: value };
             const updatedUser = await updateUser(userId, payload);
             if (updatedUser) updateRowUI(userId, updatedUser);
         }
 
-        // [NEW] 通用的日期更新函式
         async function handleDateUpdate(userId, fieldName, value) {
-            // 如果 value 是 null (清除)，或是有值但不是空字串
             if (value === null || value) {
                 const isoValue = value ? new Date(value).toISOString() : null;
                 const payload = { [fieldName]: isoValue };
@@ -212,7 +206,6 @@
             }
         }
         
-        // [NEW] 終止服務函式
         async function handleTerminate(userId) {
             if (confirm(`確定要立即終止這位會員的所有服務嗎？\n此操作無法復原，會員將立即無法登入。`)) {
                 const updatedUser = await updateUser(userId, { terminate: true });
