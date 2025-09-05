@@ -104,7 +104,7 @@
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
                 <div class="flex justify-between items-center flex-wrap gap-2">
-                    <div id="membership-dates-display" class="hidden text-sm px-3 py-1 rounded-full"></div>
+                    <div id="membership-dates-display" class="text-sm px-3 py-1 rounded-full"></div>
                     <p id="last-updated" class="text-xs text-gray-400"></p>
                 </div>
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -274,20 +274,25 @@
 
             <div id="trends-tab" class="hidden space-y-4">
                  <div class="bg-white p-4 rounded-lg shadow">
-                      <div class="flex flex-wrap justify-center items-center gap-2 mb-4">
-                           <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                           <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
-                           <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
-                           <div class="flex items-center gap-1">
+                      <div class="flex flex-col items-center gap-2 mb-4">
+                          <div class="flex justify-center flex-wrap gap-2">
+                               <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                               <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
+                               <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
+                          </div>
+                          <div class="flex items-center gap-1">
                                 <label for="start-date-picker" class="text-xs">自訂開始日:</label>
                                 <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                           </div>
+                          </div>
                       </div>
                       <canvas id="trendsChart"></canvas>
-                      <div id="chart-toggles" class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
+                      <div id="averages-display" class="text-xs text-center text-gray-600 mt-4 p-2 bg-gray-100 rounded-md"></div>
+                      <div id="chart-toggles" class="grid grid-cols-2 md:flex md:flex-wrap justify-center gap-x-4 gap-y-2 mt-4 text-sm">
+                           <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="0" checked> 體重</label>
                            <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
                            <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
                            <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
+                           <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="4" checked> 燃脂膠囊</label>
                       </div>
                  </div>
             </div>
@@ -731,18 +736,27 @@
                 const ctx = document.getElementById('trendsChart').getContext('2d');
                 if (trendsChart) trendsChart.destroy();
                 
+                // [MODIFIED] 動態計算Y軸範圍 (溜滑梯效果)
                 const weights = chartData.weight.filter(w => w !== null && w > 0);
-                const minWeight = weights.length > 0 ? Math.floor(Math.min(...weights) - 1) : null;
-                const maxWeight = weights.length > 0 ? Math.ceil(Math.max(...weights) + 1) : null;
+                let minWeight = null;
+                let maxWeight = null;
+                if (weights.length > 0) {
+                    const dataMin = Math.min(...weights);
+                    const dataMax = Math.max(...weights);
+                    // 增加上下緩衝，避免曲線貼邊
+                    minWeight = dataMin - 0.5;
+                    maxWeight = dataMax + 0.5;
+                }
 
                 trendsChart = new Chart(ctx, {
-                    type: 'line', data: {
+                    data: {
                         labels: chartData.labels,
                         datasets: [
-                            { label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true },
-                            { label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', hidden: false, yAxisID: 'yKcal' },
-                            { label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', hidden: false, yAxisID: 'yKcal' }, 
-                            { label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', hidden: false, yAxisID: 'yKcal' }
+                            { type: 'line', label: '體重 (kg)', data: chartData.weight, borderColor: '#059669', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'yWeight', tension: 0.1, fill: true, order: 1 },
+                            { type: 'line', label: '熱量攝取 (kcal)', data: chartData.calories, borderColor: '#ef4444', yAxisID: 'yKcal', order: 2 },
+                            { type: 'line', label: '飲水 (c.c.)', data: chartData.water, borderColor: '#3b82f6', yAxisID: 'yKcal', order: 2 }, 
+                            { type: 'line', label: '運動消耗 (kcal)', data: chartData.exercise, borderColor: '#A855F7', yAxisID: 'yKcal', order: 2 },
+                            { type: 'bar', label: '燃脂膠囊 (包)', data: chartData.capsule, backgroundColor: '#f97316', yAxisID: 'yKcal', order: 3 }
                         ]
                     },
                     options: {
@@ -754,22 +768,60 @@
                                 type: 'linear', 
                                 position: 'left', 
                                 title: { display: true, text: '公斤 (kg)' },
-                                min: minWeight,
-                                max: maxWeight,
+                                min: minWeight, // 動態最小值
+                                max: maxWeight, // 動態最大值
                                 ticks: {
-                                    stepSize: 0.1
+                                    stepSize: 0.1 // 固定 0.1 一格
                                 }
                             },
-                            yKcal: { type: 'linear', position: 'right', title: { display: true, text: 'kcal / c.c.' }, grid: { drawOnChartArea: false } }
+                            yKcal: { 
+                                type: 'linear', 
+                                position: 'right', 
+                                title: { display: true, text: 'kcal / c.c. / 包' }, 
+                                grid: { drawOnChartArea: false },
+                                beginAtZero: true 
+                            }
                         }
                     }
                 });
                 document.querySelectorAll('.chart-toggle').forEach(el => {
-                    trendsChart.setDatasetVisibility(el.dataset.datasetIndex, el.checked);
+                    const isVisible = trendsChart.isDatasetVisible(el.dataset.datasetIndex);
+                    if (isVisible !== el.checked) {
+                         trendsChart.setDatasetVisibility(el.dataset.datasetIndex, el.checked);
+                    }
                 });
                 trendsChart.update();
+                updateAverages(chartData);
+
             } catch (e) { console.error("渲染圖表失敗", e) }
         }
+
+        // [NEW] 新增函式：計算並顯示平均值
+        function updateAverages(chartData) {
+            const averagesDiv = document.getElementById('averages-display');
+            if (!averagesDiv) return;
+
+            const calculateAverage = (data) => {
+                const validData = data.filter(item => item !== null && item > 0);
+                if (validData.length === 0) return 'N/A';
+                const sum = validData.reduce((a, b) => a + b, 0);
+                return (sum / validData.length).toFixed(1);
+            };
+
+            const avgWeight = calculateAverage(chartData.weight);
+            const avgCalories = Math.round(calculateAverage(chartData.calories));
+            const avgWater = Math.round(calculateAverage(chartData.water));
+            const avgCapsule = calculateAverage(chartData.capsule);
+
+            let html = `<strong>期間平均：</strong>`;
+            if (avgWeight !== 'N/A') html += ` 體重 <strong>${avgWeight} kg</strong> |`;
+            if (avgCalories !== 'N/A') html += ` 日均熱量 <strong>${avgCalories} kcal</strong> |`;
+            if (avgWater !== 'N/A') html += ` 日均飲水 <strong>${avgWater} cc</strong> |`;
+            if (avgCapsule !== 'N/A') html += ` 日均膠囊 <strong>${avgCapsule} 包</strong>`;
+
+            averagesDiv.innerHTML = html.replace(/ \|$/, ''); // 移除最後一個分隔符
+        }
+
 
         // --- 5. 應用程式啟動流程 ---
         function clearInput(fieldName, defaultValue = '') {
@@ -1036,11 +1088,10 @@
                 
                 await loadProfileData(); 
                 
-                // [最終修正] 採用「固定版面，動態內容」邏輯，確保效期區塊永遠顯示
+                // [最終修正] 採用「固定版面，動態內容」和激勵文案
                 const displayDiv = document.getElementById('membership-dates-display');
                 const status = userProfileData.status;
 
-                // 準備日期字串，如果後台沒給值，就使用 '(未設定)'
                 const placeholder = '(未設定)';
                 const startDateStr = userProfileData.membership_start_date 
                     ? new Date(userProfileData.membership_start_date).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -1049,25 +1100,32 @@
                     ? new Date(userProfileData.expiry_timestamp).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
                     : placeholder;
 
-                // 根據狀態決定前綴文字和顏色
-                let labelText = '';
+                let fullText = '';
                 let labelClass = '';
 
                 if (status === 'Active') {
-                    labelText = '會籍:';
-                    labelClass = 'bg-green-100 text-gray-600';
+                    labelClass = 'bg-green-100 text-green-800';
+                    if (startDateStr !== placeholder) {
+                        fullText = `會籍有效 (${startDateStr} - ${endDateStr}) | 為更好的自己繼續努力！`;
+                    } else {
+                        fullText = '會籍有效 | 為更好的自己繼續努力！';
+                    }
                 } else if (status === 'Trial') {
-                    labelText = '試用中:';
                     labelClass = 'bg-yellow-100 text-yellow-800';
+                     if (startDateStr !== placeholder) {
+                        fullText = `體驗中 (${startDateStr} - ${endDateStr}) | 把握時間，開始改變！ (請洽管理員)`;
+                    } else {
+                        fullText = '體驗中 | 把握時間，開始改變！ (請洽管理員)';
+                    }
                 }
 
-                // 組合最終顯示的文字
-                displayDiv.textContent = `${labelText} ${startDateStr} - ${endDateStr}`;
+                if (fullText) {
+                    displayDiv.textContent = fullText;
+                    displayDiv.className = `text-sm px-3 py-1 rounded-full ${labelClass}`;
+                } else {
+                    displayDiv.className = 'hidden';
+                }
                 
-                // 套用樣式並永遠顯示該區塊
-                displayDiv.className = `text-sm px-3 py-1 rounded-full ${labelClass}`;
-                
-                // 只有在真的有日期時才顯示 "28天會籍" 的圖表按鈕
                 if (userProfileData.membership_start_date) {
                     document.getElementById('membership-range-btn').classList.remove('hidden');
                 } else {
@@ -1100,22 +1158,4 @@
 
                 document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
                 document.getElementById('log-tab').classList.remove('hidden');
-                document.getElementById('calc-footnote').style.display = 'block';
-                
-                await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
-                await loadLogDataForDate(currentDate);
-                setupEventListeners();
-
-            } catch (error) {
-                console.error("初始化失敗", error);
-                document.getElementById('loading-text').textContent = `初始化失敗: ${error.message}`;
-            } finally {
-                document.getElementById('loading').classList.add('hidden');
-                document.getElementById('app').classList.remove('hidden');
-            }
-        }
-        
-        main();
-    </script>
-</body>
-</html>
+                document.getElementById('calc-footnote').style.
