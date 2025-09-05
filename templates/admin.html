@@ -15,11 +15,10 @@
         .toast.show {
             visibility: visible; opacity: 1; transition: opacity 0.5s linear;
         }
-        /* 讓日期輸入框在未被點擊時看起來像普通文字 */
         input[type="datetime-local"].date-input-placeholder::before {
             content: attr(placeholder);
             display: block;
-            color: #9ca3af; /* gray-400 */
+            color: #9ca3af;
         }
         input[type="datetime-local"].date-input-placeholder:focus::before,
         input[type="datetime-local"].date-input-placeholder:valid::before {
@@ -44,10 +43,10 @@
                 <thead class="bg-gray-200 text-gray-600 uppercase">
                     <tr>
                         <th class="py-3 px-4 text-left">LINE 名稱</th>
-                        <th class="py-3 px-4 text-left">管理員暱稱</th>
+                        <th class="py-3 px-4 text-left">暱稱</th>
                         <th class="py-3 px-4 text-left">狀態</th>
-                        <th class="py-3 px-6 text-left min-w-[550px]">權限設定</th>
-                        <th class="py-3 px-4 text-left">教練備註</th>
+                        <th class="py-3 px-6 text-left min-w-[480px]">權限設定</th>
+                        <th class="py-3 px-4 text-left">備註</th>
                     </tr>
                 </thead>
                 <tbody id="user-list-body" class="text-gray-700">
@@ -61,7 +60,7 @@
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         const API_BASE_URL = "https://line-nutrition-bot-dev-db-api.onrender.com";
-        let liffId = "2008021259-NLyg2AWl"; // 請確認這是您管理後台專用的 LIFF ID
+        let liffId = "2008021259-65mzZK90"; // 這是您管理後台專用的 LIFF ID
         let currentAdminId = null;
 
         function showToast(message) {
@@ -95,18 +94,15 @@
             }
         }
         
-        // [MODIFIED] 全新渲染會員列的函式
         function renderUserRow(user) {
             const displayName = user.display_name || '(新用戶)';
             const adminNickname = user.admin_nickname || '';
 
-            // 處理日期格式，以便放入 datetime-local 輸入框
             const formatForInput = (isoString) => isoString ? isoString.substring(0, 16) : '';
             const startValue = formatForInput(user.membership_start_date);
             const endValue = formatForInput(user.expiry_timestamp);
             const termValue = formatForInput(user.service_termination_date);
 
-            // 狀態與顏色判斷邏輯
             let statusClass = '';
             let statusText = '';
             if (user.computed_status === 'Active') {
@@ -123,7 +119,6 @@
                 statusText = '未知';
             }
 
-            // [MODIFIED] 全新的 HTML 結構
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
                     <td class="py-3 px-4 pt-5">
@@ -131,7 +126,7 @@
                             ${displayName}
                         </a>
                     </td>
-                    <td class="py-3 px-4 pt-5">
+                    <td class="py-3 px-4 pt-5" style="width: 120px;">
                         <input type="text" value="${adminNickname}" 
                                onchange="handleFieldUpdate('${user.user_id}', 'adminNickname', this.value)"
                                class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
@@ -172,11 +167,11 @@
                             <button onclick="handleTerminate('${user.user_id}')" class="bg-red-600 text-white px-3 py-1 text-xs rounded hover:bg-red-700 transition-colors">立即終止服務</button>
                         </div>
                     </td>
-                    <td class="py-3 px-4 pt-5">
-                        <input type="text" value="${user.admin_notes || ''}" 
-                               onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
-                               class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                               placeholder="新增備註...">
+                    <td class="py-3 px-4 pt-2" style="width: 150px;">
+                        <textarea rows="4" 
+                                  onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
+                                  class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                  placeholder="新增備註...">${user.admin_notes || ''}</textarea>
                     </td>
                 </tr>
             `;
@@ -194,16 +189,13 @@
               }
         }
         
-        // [NEW] 通用的欄位更新函式
         async function handleFieldUpdate(userId, fieldName, value) {
             const payload = { [fieldName]: value };
             const updatedUser = await updateUser(userId, payload);
             if (updatedUser) updateRowUI(userId, updatedUser);
         }
 
-        // [NEW] 通用的日期更新函式
         async function handleDateUpdate(userId, fieldName, value) {
-            // 如果 value 是 null (清除)，或是有值但不是空字串
             if (value === null || value) {
                 const isoValue = value ? new Date(value).toISOString() : null;
                 const payload = { [fieldName]: isoValue };
@@ -212,7 +204,6 @@
             }
         }
         
-        // [NEW] 終止服務函式
         async function handleTerminate(userId) {
             if (confirm(`確定要立即終止這位會員的所有服務嗎？\n此操作無法復原，會員將立即無法登入。`)) {
                 const updatedUser = await updateUser(userId, { terminate: true });
