@@ -26,7 +26,6 @@ def init_db():
     print("正在檢查並初始化資料庫...")
     conn = get_db_connection()
     with conn.cursor() as cur:
-        # [MODIFIED] 更新 user_profiles 表格結構
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
@@ -35,9 +34,9 @@ def init_db():
                 height REAL, profile_weight REAL, age INTEGER, gender VARCHAR(10),
                 activity_level REAL, target_calories INTEGER,
                 water_goal INTEGER, personal_notes TEXT, 
-                last_updated TIMESTAMPTZ, -- [MODIFIED] 修改為精確時間
+                last_updated TIMESTAMPTZ,
                 exercise_goal INTEGER, 
-                exercise_goal_text TEXT, -- [NEW] 新增運動目標文字描述
+                exercise_goal_text TEXT,
                 capsule_goal INTEGER,
                 admin_notes TEXT, status VARCHAR(50),
                 expiry_timestamp TIMESTAMPTZ,
@@ -62,7 +61,6 @@ def init_db():
             );
         ''')
         
-        # [NEW] 新增：建立使用者自訂運動資料表
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_exercises (
                 id SERIAL PRIMARY KEY,
@@ -74,12 +72,11 @@ def init_db():
             );
         ''')
 
-        # [MODIFIED] 檢查並新增所有需要的欄位
         profile_columns_to_check = {
             'admin_nickname': 'VARCHAR(255)',
             'membership_start_date': 'TIMESTAMPTZ',
             'service_termination_date': 'TIMESTAMPTZ',
-            'exercise_goal_text': 'TEXT' # [NEW] 加入新欄位檢查
+            'exercise_goal_text': 'TEXT'
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -88,7 +85,6 @@ def init_db():
                 cur.execute(f"ALTER TABLE user_profiles ADD COLUMN {col} {data_type};")
                 print(f"新增 {col} 欄位至 user_profiles")
 
-        # [NEW] 檢查並升級 last_updated 欄位的資料型態
         cur.execute("""
             SELECT data_type FROM information_schema.columns 
             WHERE table_name = 'user_profiles' AND column_name = 'last_updated';
@@ -108,19 +104,17 @@ def init_db():
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
 
-# [MODIFIED] 重寫會員狀態判斷邏輯
+# [MODIFIED] 修正會員狀態判斷的 Bug
 def check_user_active(user_id):
     if is_admin(user_id):
         return (True, "Admin")
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # 查詢所有相關日期欄位
         cur.execute("SELECT membership_start_date, expiry_timestamp, service_termination_date FROM user_profiles WHERE user_id = %s", (user_id,))
         user = cur.fetchone()
     conn.close()
 
-    # 如果用戶不存在於資料庫，視為預設試用期
     if not user:
         return (True, "Trial")
 
@@ -130,12 +124,15 @@ def check_user_active(user_id):
     if user['service_termination_date'] and user['service_termination_date'] <= now_utc:
         return (False, "Terminated")
 
-    # 2. 檢查是否為有效付費會員 (只看迄日)
+    # 2. 檢查是否為有效付費會員
     if user['expiry_timestamp'] and user['expiry_timestamp'] >= now_utc:
         return (True, "Active")
+    
+    # 3. [NEW BUG FIX] 新增對「已過期」狀態的明確判斷
+    if user['expiry_timestamp'] and user['expiry_timestamp'] < now_utc:
+        return (False, "Expired")
         
-    # 3. 如果以上條件都不滿足，則視為試用期
-    # (此處包含新用戶、迄日為空、或迄日已過期的情況，他們都算試用)
+    # 4. 如果以上條件都不滿足，則視為試用期
     return (True, "Trial")
 
 
@@ -185,7 +182,8 @@ def handle_profile():
     operator_id = request.headers.get('X-Operator-User-Id')
     
     if request.method == 'GET' and not is_active and not is_admin(operator_id):
-        return jsonify({"error": "Access denied. Your subscription has been terminated.", "status": status}), 403
+        # [MODIFIED] 修正後，這裡可以正確攔截到 "Expired" 和 "Terminated" 狀態
+        return jsonify({"error": "Access denied. Your subscription is inactive.", "status": status}), 403
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
@@ -244,11 +242,10 @@ def handle_profile():
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
-                # [MODIFIED] 確保 liff.html 能拿到正確且同步的 status
+                # 這裡會接收到修正後的正確 status
                 _is_active, status_string = check_user_active(user_id)
                 profile_dict['status'] = status_string
 
-                # [NEW] 新增：計算並回傳剩餘天數
                 profile_dict['days_remaining'] = None
                 if profile.get('expiry_timestamp'):
                     now_utc = datetime.now(pytz.utc)
@@ -312,10 +309,8 @@ def handle_log():
             return jsonify(response_data)
     conn.close()
 
-# [NEW] 新增：個人化運動資料庫 API
 @app.route('/api/user-exercises', methods=['GET', 'POST'])
 def handle_user_exercises():
-    # 權限驗證
     operator_id = request.headers.get('X-Operator-User-Id')
     if not operator_id:
         return jsonify({"error": "X-Operator-User-Id header is required"}), 400
@@ -343,10 +338,8 @@ def handle_user_exercises():
             if not user_id or not isinstance(exercises, list) or len(exercises) != 3:
                 return jsonify({"error": "Invalid payload. Required: userId and a list of 3 exercises."}), 400
 
-            # 遍歷並儲存三組運動
             for i, ex in enumerate(exercises):
                 slot_index = i + 1
-                # 伺服器端基本驗證
                 name = ex.get('name')
                 kcal = to_int_or_none(ex.get('kcal'))
                 
@@ -403,11 +396,15 @@ def get_trends():
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # [MODIFIED] 新增查詢 capsule_qty 欄位給圖表使用
+        # [MODIFIED] 根據您的最新需求，將所有 NULL 值都轉為 0，以確保折線圖連續
         cur.execute('''
-            SELECT log_date, daily_weight, 
-                   COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories, 
-                   water_cc, exercise_kcal, capsule_qty
+            SELECT 
+                log_date, 
+                daily_weight, 
+                COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + COALESCE(drinks_kcal,0) as calories, 
+                COALESCE(water_cc, 0) as water_cc, 
+                COALESCE(exercise_kcal, 0) as exercise_kcal, 
+                COALESCE(capsule_qty, 0) as capsule_qty
             FROM daily_logs 
             WHERE user_id = %s AND log_date BETWEEN %s AND %s 
             ORDER BY log_date ASC
@@ -421,10 +418,10 @@ def get_trends():
     
     trend_data = {
         'weight': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('daily_weight') for i in range(total_days)],
-        'calories': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('calories') for i in range(total_days)],
-        'water': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('water_cc') for i in range(total_days)],
-        'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('exercise_kcal') for i in range(total_days)],
-        'capsule': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('capsule_qty') for i in range(total_days)]
+        'calories': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'calories': 0}).get('calories') for i in range(total_days)],
+        'water': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'water_cc': 0}).get('water_cc') for i in range(total_days)],
+        'exercise': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'exercise_kcal': 0}).get('exercise_kcal') for i in range(total_days)],
+        'capsule': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'capsule_qty': 0}).get('capsule_qty') for i in range(total_days)]
     }
     return jsonify({ 'labels': labels, **trend_data })
 
@@ -456,9 +453,12 @@ def get_all_users():
             if term_date and term_date <= now_utc:
                 user['computed_status'] = 'Terminated'
             elif start_date and start_date > now_utc:
-                user['computed_status'] = 'Attention' # 優先判斷未來會員
+                user['computed_status'] = 'Attention'
             elif end_date and end_date >= now_utc:
                 user['computed_status'] = 'Active'
+            # [NEW BUG FIX] 新增後台對「已過期」狀態的判斷
+            elif end_date and end_date < now_utc:
+                user['computed_status'] = 'Expired'
             else:
                 user['computed_status'] = 'Trial'
             
@@ -524,6 +524,9 @@ def update_admin_profile():
                 updated_user['computed_status'] = 'Attention'
             elif end_date and end_date >= now_utc_for_status:
                 updated_user['computed_status'] = 'Active'
+            # [NEW BUG FIX] 新增後台對「已過期」狀態的判斷
+            elif end_date and end_date < now_utc_for_status:
+                updated_user['computed_status'] = 'Expired'
             else:
                 updated_user['computed_status'] = 'Trial'
 
