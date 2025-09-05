@@ -526,16 +526,16 @@
                  }
              }
             
-            let finalRange = range;
-            if (range === 'membership_period') {
-                if (userProfileData.membership_start_date) {
-                    finalRange = userProfileData.membership_start_date.split('T')[0];
-                } else {
-                    finalRange = '7days';
-                    document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
-                }
-            }
-            await renderChart(finalRange);
+             let finalRange = range;
+             if (range === 'membership_period') {
+                 if (userProfileData.membership_start_date) {
+                     finalRange = userProfileData.membership_start_date.split('T')[0];
+                 } else {
+                     finalRange = '7days';
+                     document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
+                 }
+             }
+             await renderChart(finalRange);
         }
         
         function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
@@ -1043,28 +1043,39 @@
                 
                 await loadProfileData(); 
                 
-                // [MODIFIED] 徹底重寫會籍顯示邏輯，解決所有相關問題
+                // [修正] 徹底重寫會籍顯示邏輯，改為完全依賴後端提供的 status 欄位
                 const displayDiv = document.getElementById('membership-dates-display');
-                if (userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
-                    const startDate = new Date(userProfileData.membership_start_date);
-                    const endDate = new Date(userProfileData.expiry_timestamp);
-                    const startDateStr = startDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                    const endDateStr = endDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                    
-                    displayDiv.classList.remove('hidden', 'bg-green-100', 'bg-yellow-100', 'text-gray-600', 'text-yellow-800');
+                const status = userProfileData.status; // 這個 status 將由更新後的 api.py 提供
 
-                    if (userProfileData.status === 'Active') {
-                        displayDiv.classList.add('bg-green-100', 'text-gray-600');
+                // 1. 先重置 UI 狀態
+                displayDiv.classList.add('hidden');
+                document.getElementById('membership-range-btn').classList.add('hidden');
+
+                // 2. 根據後端 status 決定如何顯示
+                if (status === 'Active') {
+                    // 如果是有效會員，且有設定起迄日，就顯示綠色的會籍資訊
+                    if (userProfileData.membership_start_date && userProfileData.expiry_timestamp) {
+                        const startDate = new Date(userProfileData.membership_start_date);
+                        const endDate = new Date(userProfileData.expiry_timestamp);
+                        const startDateStr = startDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                        const endDateStr = endDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+                        displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-green-100 text-gray-600';
                         displayDiv.textContent = `會籍: ${startDateStr} - ${endDateStr}`;
-                    } else { // 包含 Trial 或其他狀態
-                        displayDiv.classList.add('bg-yellow-100', 'text-yellow-800');
-                        displayDiv.textContent = `試用中: ${startDateStr} - ${endDateStr} (請洽管理員)`;
+                        document.getElementById('membership-range-btn').classList.remove('hidden');
                     }
-                    document.getElementById('membership-range-btn').classList.remove('hidden');
-                } else {
-                    displayDiv.classList.add('hidden');
-                    document.getElementById('membership-range-btn').classList.add('hidden');
+                } else if (status === 'Trial') {
+                    // 如果是試用會員，且有服務終止日，就顯示黃色的到期日提示
+                    // (主要的「試用中」提示由頁面上方的藍色 trial-banner 負責)
+                    if (userProfileData.service_termination_date) {
+                        const endDate = new Date(userProfileData.service_termination_date);
+                        const endDateStr = endDate.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                        
+                        displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-yellow-100 text-yellow-800';
+                        displayDiv.textContent = `試用到期日: ${endDateStr}`;
+                    }
                 }
+                // 如果是 Terminated 或其他狀態，displayDiv 會維持 hidden，這是正確的。
                 
                 if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
                     console.log('偵測到首次登入或名稱未同步，自動更新名稱...');
