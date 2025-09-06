@@ -183,6 +183,47 @@ def check_user_active(user_id):
     
     return (is_active, status)
 
+# ******** 【新增的函式】 ********
+# 這是在這裡新增的函式，用來產生前端需要的 banner_info 物件
+def get_banner_info(user_profile):
+    """
+    根據使用者資料，產生前端 Banner 需要的文字和顏色 class。
+    """
+    status = get_user_status(user_profile)
+    
+    # 預設值
+    banner_info = { "text": "會籍狀態不明", "color_class": "bg-gray-200 text-gray-800" }
+
+    if status == "VIP":
+        banner_info = { "text": "VIP 會員", "color_class": "bg-yellow-200 text-yellow-800" }
+    elif status == "Active":
+        days_remaining = None
+        if user_profile.get('expiry_timestamp'):
+            now_utc = datetime.now(pytz.utc)
+            if user_profile['expiry_timestamp'] > now_utc:
+                delta = user_profile['expiry_timestamp'] - now_utc
+                days_remaining = delta.days
+        
+        if days_remaining is not None:
+             banner_info = { "text": f"會籍有效 (剩 {days_remaining} 天)", "color_class": "bg-green-200 text-green-800" }
+        else:
+             banner_info = { "text": "會籍有效", "color_class": "bg-green-200 text-green-800" }
+
+    elif status == "Trial":
+        banner_info = { "text": "試用體驗中", "color_class": "bg-blue-200 text-blue-800" }
+    elif status == "Reserved":
+        start_date_str = user_profile.get('membership_start_date').astimezone(TAIPEI_TZ).strftime('%Y/%m/%d')
+        banner_info = { "text": f"會籍待啟用 ({start_date_str} 開始)", "color_class": "bg-cyan-200 text-cyan-800" }
+    elif status == "Expired":
+        banner_info = { "text": "會籍已過期", "color_class": "bg-gray-400 text-gray-800" }
+    elif status == "Terminated":
+        banner_info = { "text": "服務已中止", "color_class": "bg-red-200 text-red-800" }
+    elif status == "Abnormal":
+        banner_info = { "text": "會籍狀態異常", "color_class": "bg-orange-200 text-orange-800" }
+        
+    return banner_info
+# ******** 【新增的函式結束】 ********
+
 
 # --- 頁面路由 ---
 @app.route('/liff')
@@ -284,6 +325,11 @@ def handle_profile():
             if profile:
                 profile_dict = dict(profile)
                 
+                # ******** 【修改點】 ********
+                # 將產生 banner_info 的程式碼加在這裡
+                profile_dict['banner_info'] = get_banner_info(profile)
+                # ******** 【修改點結束】 ********
+
                 date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
                 for field in date_fields:
                     if profile_dict.get(field):
