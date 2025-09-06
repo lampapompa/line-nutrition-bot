@@ -39,6 +39,35 @@ const formatTimestamp = (isoString) => {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
+// ===== ▼▼▼ 請新增這個輔助函式 ▼▼▼ =====
+function formatDetailedDate(isoString) {
+    // 如果日期不存在 (是 null 或 undefined)，就回傳您要的預設文字
+    if (!isoString) {
+        return '--年--月--日 --:--';
+    }
+    
+    // 如果有日期，就進行格式化
+    try {
+        const date = new Date(isoString);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        
+        let hours = date.getHours();
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? '下午' : '上午';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // 讓 0 點顯示為 12
+        const hoursStr = hours.toString().padStart(2, '0');
+        
+        return `${year}/${month}/${day} ${ampm} ${hoursStr}:${minutes}`;
+    } catch (e) {
+        console.error("日期格式化失敗:", e);
+        return '--年--月--日 --:--'; // 格式化出錯也回傳預設值
+    }
+}
+// ===== ▲▲▲ 新增輔助函式結束 ▲▲▲ =====
+
 async function fetchAPI(endpoint, options = {}) {
     const defaultHeaders = {
         'Content-Type': 'application/json',
@@ -181,6 +210,12 @@ async function loadProfileData() {
 
     // 【修改點一】每次载入最新资料后，都手动更新一次会籍显示
     updateMembershipBanner();
+
+    // ===== ▼▼▼ 請將這三行新增的程式碼加在這裡 ▼▼▼ =====
+    document.getElementById('display-membership-start').textContent = formatDetailedDate(userProfileData.membership_start_date);
+    document.getElementById('display-membership-end').textContent = formatDetailedDate(userProfileData.expiry_timestamp);
+    document.getElementById('display-membership-termination').textContent = formatDetailedDate(userProfileData.service_termination_date);
+    // ===== ▲▲▲ 新增程式碼結束 ▲▲▲ =====
 
     // 更新熱量目標按鈕的選中狀態
     document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
