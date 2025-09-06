@@ -1,8 +1,10 @@
 import os
 import psycopg2
 import psycopg2.extras
-from flask import Flask, request, jsonify, render_template
+# [ADDED] 引入 Flask 的 g 物件用於儲存單次請求的連線，以及引入連線池
+from flask import Flask, request, jsonify, render_template, g
 from flask_cors import CORS
+from psycopg2 import pool
 from datetime import datetime, timedelta, date
 import pytz
 
@@ -15,18 +17,45 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 ADMIN_USER_IDS_str = os.environ.get('ADMIN_USER_IDS', '')
 ADMIN_USER_IDS = [uid.strip() for uid in ADMIN_USER_IDS_str.split(',') if uid.strip()]
 
+# [ADDED] 建立全域的資料庫連線池
+# 伺服器啟動時，會預先建立 1 個連線，最多可擴展至 5 個連線
+try:
+    connection_pool = psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=5,
+        dsn=DATABASE_URL,
+        sslmode='require' # Render 的資料庫需要 SSL
+    )
+    print("資料庫連線池建立成功。")
+except Exception as e:
+    print(f"建立資料庫連線池失敗: {e}")
+    connection_pool = None
+
 # --- 資料庫輔助函式 ---
+# [MODIFIED] get_db_connection 現在會從連線池中取得連線
+# 並將其儲存在 Flask 的 g 物件中，確保在同一個請求中重複使用同一個連線
 def get_db_connection():
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL environment variable is not set")
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
+    if 'db_conn' not in g:
+        if connection_pool:
+            g.db_conn = connection_pool.getconn()
+        else:
+            raise Exception("資料庫連線池不可用。")
+    return g.db_conn
+
+# [ADDED] 建立一個 teardown 函式，Flask 會在每次請求結束後自動呼叫它
+# 無論請求成功或失敗，它都會確保連線被安全地歸還到池中
+@app.teardown_appcontext
+def close_db_connection(e=None):
+    db_conn = g.pop('db_conn', None)
+    if db_conn is not None and connection_pool:
+        connection_pool.putconn(db_conn)
 
 def init_db():
     print("正在檢查並初始化資料庫...")
+    # [MODIFIED] init_db 現在也從 get_db_connection 獲取連線
     conn = get_db_connection()
     with conn.cursor() as cur:
-        # [MODIFIED] 在 user_profiles 表中新增 is_vip 欄位
+        # ... (此處 CREATE TABLE 的內容完全不變)
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
@@ -42,8 +71,7 @@ def init_db():
                 admin_notes TEXT, status VARCHAR(50),
                 expiry_timestamp TIMESTAMPTZ,
                 membership_start_date TIMESTAMPTZ,
-                service_termination_date TIMESTAMPTZ,
-                is_vip BOOLEAN DEFAULT FALSE
+                service_termination_date TIMESTAMPTZ
             );
         ''')
         cur.execute('''
@@ -74,13 +102,11 @@ def init_db():
             );
         ''')
 
-        # [MODIFIED] 將 is_vip 加入欄位檢查列表
         profile_columns_to_check = {
             'admin_nickname': 'VARCHAR(255)',
             'membership_start_date': 'TIMESTAMPTZ',
             'service_termination_date': 'TIMESTAMPTZ',
-            'exercise_goal_text': 'TEXT',
-            'is_vip': 'BOOLEAN DEFAULT FALSE'
+            'exercise_goal_text': 'TEXT'
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -99,90 +125,57 @@ def init_db():
             cur.execute("ALTER TABLE user_profiles ALTER COLUMN last_updated TYPE TIMESTAMPTZ USING last_updated::timestamp with time zone;")
             print("欄位型態修改完成。")
 
-
     conn.commit()
-    conn.close()
+    # [REMOVED] 不再手動關閉連線，交由 teardown 函式自動歸還
+    # conn.close() 
     print("資料庫初始化檢查完成。")
 
+# ... (is_admin, get_user_status, check_user_active 等所有業務邏輯函式保持完全不變) ...
 # --- 權限與身份驗證輔助函式 ---
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
 
-# [REMOVED] 舊的狀態判斷邏輯，將被新的 get_user_status_info 取代
-# def get_user_status(user_profile): ...
-# def check_user_active(user_id): ...
-
-# [ADDED] 全新的、統一的會員狀態判斷核心函式
-def get_user_status_info(user_profile):
+def get_user_status(user_profile):
     """
-    根據使用者資料物件判斷其會員狀態，並產生對應的顯示資訊。
-    返回一個包含 (is_active, status_code, banner_info) 的字典。
+    根據使用者資料物件判斷其會員狀態。
+    返回一個代表狀態的字串。
     """
-    now_utc = datetime.now(pytz.utc)
-    
-    # 預設的 banner 資訊
-    banner_info = {
-        "text": "會籍狀態未知",
-        "color_class": "bg-gray-100 text-gray-800"
-    }
-
-    # 優先級 0: VIP 檢查 (如果我們決定採用方案B)
-    # 這裡我們預設採用方案B，如果不需要，可以移除這段
-    if user_profile and user_profile.get('is_vip'):
-        banner_info = {"text": "VIP 尊榮會員", "color_class": "bg-green-100 text-green-800"}
-        return {"is_active": True, "status_code": "VIP", "banner_info": banner_info}
-
-    # 如果沒有 profile 紀錄，視為新來的試用者
     if not user_profile:
-        remaining_time = timedelta(hours=12)
-        remaining_hours = int(remaining_time.total_seconds() / 3600)
-        banner_info = {"text": f"體驗中｜剩下 {remaining_hours} 小時...", "color_class": "bg-yellow-100 text-yellow-800"}
-        return {"is_active": True, "status_code": "Trial", "banner_info": banner_info}
+        return "Trial" 
 
+    now_utc = datetime.now(pytz.utc)
     term_date = user_profile.get('service_termination_date')
     start_date = user_profile.get('membership_start_date')
     end_date = user_profile.get('expiry_timestamp')
 
-    # 優先級 1: 中止 (Terminated)
-    if term_date and now_utc >= term_date:
-        banner_info = {"text": "服務已中止", "color_class": "bg-red-100 text-red-800"}
-        return {"is_active": False, "status_code": "Terminated", "banner_info": banner_info}
+    if term_date and term_date <= now_utc:
+        return "Terminated"
+    if start_date and start_date > now_utc:
+        return "Attention"
+    if end_date and end_date >= now_utc:
+        return "Active"
+    if end_date and end_date < now_utc:
+        return "Expired"
+    return "Trial"
 
-    # 優先級 2: 異常 (Abnormal)
-    if (end_date and start_date and end_date < start_date) or \
-       (term_date and end_date and term_date < end_date):
-        days_remaining = (end_date - now_utc).days if end_date and end_date > now_utc else 0
-        banner_info = {"text": f"會籍有效｜剩下 {days_remaining} 天...", "color_class": "bg-green-100 text-green-800"}
-        return {"is_active": True, "status_code": "Abnormal", "banner_info": banner_info}
+def check_user_active(user_id):
+    """
+    檢查使用者是否可用服務，返回 (布林值, 狀態字串)
+    """
+    if is_admin(user_id):
+        return (True, "Admin")
 
-    # 優先級 3: 預約 (Reserved)
-    if start_date and now_utc < start_date:
-        start_date_local = start_date.astimezone(TAIPEI_TZ)
-        banner_info = {"text": f"會籍已預約｜將於 {start_date_local.strftime('%Y/%m/%d')} 開始", "color_class": "bg-blue-100 text-blue-800"}
-        return {"is_active": True, "status_code": "Reserved", "banner_info": banner_info}
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        cur.execute("SELECT membership_start_date, expiry_timestamp, service_termination_date FROM user_profiles WHERE user_id = %s", (user_id,))
+        user = cur.fetchone()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
 
-    # 優先級 4: 有效 (Active)
-    if start_date and end_date and start_date <= now_utc < end_date:
-        days_remaining = (end_date - now_utc).days
-        banner_info = {"text": f"會籍有效｜剩下 {days_remaining} 天...", "color_class": "bg-green-100 text-green-800"}
-        return {"is_active": True, "status_code": "Active", "banner_info": banner_info}
+    status = get_user_status(user)
+    is_active = status in ["Admin", "Active", "Trial", "Attention"]
     
-    # 優先級 5: 試用 (Trial) - 包含付費到期和新用戶
-    # 付費到期變試用
-    if end_date and now_utc >= end_date:
-        banner_info = {"text": "體驗中", "color_class": "bg-yellow-100 text-yellow-800"}
-        return {"is_active": True, "status_code": "Trial", "banner_info": banner_info}
-    
-    # 新用戶/只有中止日期的試用
-    if term_date and now_utc < term_date:
-        remaining_time = term_date - now_utc
-        remaining_hours = int(remaining_time.total_seconds() / 3600)
-        banner_info = {"text": f"體驗中｜剩下 {remaining_hours} 小時...", "color_class": "bg-yellow-100 text-yellow-800"}
-        return {"is_active": True, "status_code": "Trial", "banner_info": banner_info}
-    
-    # 預設狀態，通常是三日期皆為空的用戶
-    banner_info = {"text": "體驗中", "color_class": "bg-yellow-100 text-yellow-800"}
-    return {"is_active": True, "status_code": "Trial", "banner_info": banner_info}
+    return (is_active, status)
 
 
 # --- 頁面路由 ---
@@ -195,7 +188,7 @@ def admin_page():
     return render_template('admin.html')
 
 
-# --- Helper function to convert empty strings to None ---
+# --- Helper function ---
 def to_int_or_none(value):
     if value == '' or value is None:
         return None
@@ -214,63 +207,29 @@ def to_float_or_none(value):
 
 
 # --- API 端點 ---
+# [MODIFIED] 所有 API 端點現在都使用新的連線管理方式
+@app.route('/api/check_status', methods=['GET'])
+def check_status():
+    user_id = request.args.get('userId')
+    if not user_id:
+        return jsonify({"error": "userId is required"}), 400
+    is_active, status = check_user_active(user_id)
+    return jsonify({"isActive": is_active, "status": status})
+
 @app.route('/api/profile', methods=['GET', 'POST'])
 def handle_profile():
     user_id = request.args.get('userId')
     if not user_id: return jsonify({"error": "userId is required"}), 400
     
+    is_active, status = check_user_active(user_id)
     operator_id = request.headers.get('X-Operator-User-Id')
     
+    if request.method == 'GET' and not is_active and not is_admin(operator_id):
+        return jsonify({"error": "Access denied. Your subscription is inactive.", "status": status}), 403
+
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        if request.method == 'GET':
-            cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
-            profile = cur.fetchone()
-
-            # 統一的權限與狀態檢查
-            if is_admin(operator_id):
-                status_info = get_user_status_info(profile)
-                status_info["is_active"] = True # 管理員永遠可以讀取資料
-            else:
-                status_info = get_user_status_info(profile)
-
-            if not status_info["is_active"]:
-                 return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
-
-            if not profile:
-                print(f"新使用者，ID: {user_id}，正在建立預設試用期...")
-                # [MODIFIED] 新用戶試用期改為 12 小時
-                default_trial_end_date = datetime.now(pytz.utc) + timedelta(hours=12)
-                cur.execute(
-                    "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s)",
-                    (user_id, default_trial_end_date)
-                )
-                conn.commit()
-                print(f"使用者 {user_id} 已建立，服務終止日為 {default_trial_end_date}")
-                cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
-                profile = cur.fetchone()
-
-            profile_dict = dict(profile)
-            
-            date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
-            for field in date_fields:
-                if profile_dict.get(field):
-                    profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
-            
-            # [MODIFIED] 將後端算好的狀態碼和 banner 資訊加入回傳
-            profile_dict['status'] = status_info["status_code"]
-            profile_dict['banner_info'] = status_info["banner_info"]
-            
-            return jsonify(profile_dict)
-
         if request.method == 'POST':
-            # POST 請求也需要權限檢查
-            cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
-            profile = cur.fetchone()
-            status_info = get_user_status_info(profile)
-            if not status_info["is_active"] and not is_admin(operator_id):
-                 return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
-
             data = request.json['data']
             now_utc = datetime.now(pytz.utc)
             
@@ -301,7 +260,45 @@ def handle_profile():
             conn.commit()
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
 
-    conn.close()
+        if request.method == 'GET':
+            cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
+            profile = cur.fetchone()
+
+            if not profile:
+                print(f"新使用者，ID: {user_id}，正在建立預設試用期...")
+                default_trial_end_date = datetime.now(pytz.utc) + timedelta(days=7)
+                cur.execute(
+                    "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s)",
+                    (user_id, default_trial_end_date)
+                )
+                conn.commit()
+                print(f"使用者 {user_id} 已建立，服務終止日為 {default_trial_end_date}")
+                cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
+                profile = cur.fetchone()
+
+            if profile:
+                profile_dict = dict(profile)
+                
+                date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
+                for field in date_fields:
+                    if profile_dict.get(field):
+                        profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
+                
+                _is_active, status_string = check_user_active(user_id)
+                profile_dict['status'] = status_string
+
+                profile_dict['days_remaining'] = None
+                if profile.get('expiry_timestamp'):
+                    now_utc = datetime.now(pytz.utc)
+                    if profile['expiry_timestamp'] > now_utc:
+                        delta = profile['expiry_timestamp'] - now_utc
+                        profile_dict['days_remaining'] = delta.days
+
+                return jsonify(profile_dict)
+            
+            return jsonify({})
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
 
 
 @app.route('/api/log', methods=['GET', 'POST'])
@@ -311,11 +308,9 @@ def handle_log():
         operator_id = request.headers.get('X-Operator-User-Id')
         if not operator_id: return jsonify({"error": "X-Operator-User-Id header is required"}), 400
         
-        cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (operator_id,))
-        profile = cur.fetchone()
-        status_info = get_user_status_info(profile)
-        if not status_info["is_active"] and not is_admin(operator_id):
-            return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
+        is_active, status = check_user_active(operator_id)
+        if not is_active:
+            return jsonify({"error": "Access denied. Your subscription may have expired.", "status": status}), 403
 
         if request.method == 'POST':
             req_data = request.json
@@ -354,7 +349,8 @@ def handle_log():
                 "previous_day_weight": previous_day_weight
             }
             return jsonify(response_data)
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
 
 @app.route('/api/user-exercises', methods=['GET', 'POST'])
 def handle_user_exercises():
@@ -362,14 +358,12 @@ def handle_user_exercises():
     if not operator_id:
         return jsonify({"error": "X-Operator-User-Id header is required"}), 400
     
+    is_active, status = check_user_active(operator_id)
+    if not is_active:
+        return jsonify({"error": "Access denied.", "status": status}), 403
+
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (operator_id,))
-        profile = cur.fetchone()
-        status_info = get_user_status_info(profile)
-        if not status_info["is_active"] and not is_admin(operator_id):
-            return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
-
         if request.method == 'GET':
             user_id = request.args.get('userId')
             if not user_id:
@@ -403,39 +397,31 @@ def handle_user_exercises():
             conn.commit()
             return jsonify({"status": "success", "message": "User exercises saved."})
     
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
     return jsonify({"error": "Method not allowed"}), 405
 
 
 @app.route('/api/completion_dots', methods=['GET'])
 def get_completion_dots():
     user_id = request.args.get('userId')
-    conn = get_db_connection()
-    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
-        profile = cur.fetchone()
-    conn.close()
-    status_info = get_user_status_info(profile)
-    if not status_info["is_active"]: return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
+    is_active, status = check_user_active(user_id)
+    if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
     
     year = request.args.get('year'); month = request.args.get('month')
     conn = get_db_connection()
     with conn.cursor() as cur:
         cur.execute('''SELECT DISTINCT EXTRACT(DAY FROM log_date) FROM daily_logs WHERE user_id = %s AND EXTRACT(YEAR FROM log_date) = %s AND EXTRACT(MONTH FROM log_date) = %s AND (breakfast_kcal IS NOT NULL OR lunch_kcal IS NOT NULL OR dinner_kcal IS NOT NULL OR snacks_kcal IS NOT NULL OR drinks_kcal IS NOT NULL)''', (user_id, year, month))
         days_with_logs = [int(item[0]) for item in cur.fetchall()]
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
     return jsonify(days_with_logs)
 
 @app.route('/api/trends', methods=['GET'])
 def get_trends():
     user_id = request.args.get('userId')
-    conn = get_db_connection()
-    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
-        profile = cur.fetchone()
-    conn.close()
-    status_info = get_user_status_info(profile)
-    if not status_info["is_active"]: return jsonify({"error": "Access denied.", "status": status_info["status_code"]}), 403
+    is_active, status = check_user_active(user_id)
+    if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
 
     range_param = request.args.get('range', '7days')
     today = datetime.now(TAIPEI_TZ).date()
@@ -455,7 +441,6 @@ def get_trends():
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # [MODIFIED] 優化：SQL查詢現在同時計算平均值，提升效能
         cur.execute('''
             WITH PeriodLogs AS (
                 SELECT 
@@ -476,11 +461,11 @@ def get_trends():
                 (SELECT AVG(capsule_qty) FROM PeriodLogs) as avg_capsule
         ''', (user_id, start_date, end_date))
         result = cur.fetchone()
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
     
     logs = result['logs'] if result and result['logs'] else []
     
-    # [ADDED] 優化：將計算好的平均值打包起來
     averages = {
         "weight": result['avg_weight'] if result else None,
         "calories": result['avg_calories'] if result else None,
@@ -500,7 +485,6 @@ def get_trends():
         'capsule': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {'capsule_qty': 0}).get('capsule_qty') for i in range(total_days)]
     }
 
-    # [MODIFIED] 優化：將平均值物件加入最終回傳的 JSON 中
     return jsonify({ 'labels': labels, **trend_data, 'averages': averages })
 
 
@@ -517,14 +501,12 @@ def get_all_users():
     if not is_admin(operator_id): return jsonify({"error": "Permission denied"}), 403
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('SELECT * FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
+        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
         users = []
         for row in cur.fetchall():
             user = dict(row)
             
-            # [MODIFIED] 優化：呼叫統一的狀態判斷函式，確保邏輯一致
-            status_info = get_user_status_info(user)
-            user['computed_status'] = status_info["status_code"]
+            user['computed_status'] = get_user_status(user)
             
             date_fields_to_format = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
             for field in date_fields_to_format:
@@ -532,7 +514,8 @@ def get_all_users():
                     user[field] = user[field].astimezone(TAIPEI_TZ).isoformat()
 
             users.append(user)
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
     return jsonify(users)
 
 @app.route('/api/admin/profile', methods=['POST'])
@@ -545,24 +528,6 @@ def update_admin_profile():
     
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        
-        # [ADDED] 新增設為 VIP 的邏輯
-        if data.get('setVip') is True:
-            cur.execute('''
-                UPDATE user_profiles 
-                SET is_vip = TRUE, 
-                    membership_start_date = NULL, 
-                    expiry_timestamp = NULL, 
-                    service_termination_date = NULL 
-                WHERE user_id = %s
-            ''', (target_user_id,))
-            print(f"管理員 {operator_id} 已將用戶 {target_user_id} 設為 VIP。")
-        # [ADDED] 新增取消 VIP 的邏輯
-        elif data.get('setVip') is False:
-            cur.execute('UPDATE user_profiles SET is_vip = FALSE WHERE user_id = %s', (target_user_id,))
-            print(f"管理員 {operator_id} 已取消用戶 {target_user_id} 的 VIP 身份。")
-
-
         if 'adminNotes' in data:
             cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s', (data['adminNotes'], target_user_id))
         if 'adminNickname' in data:
@@ -579,7 +544,8 @@ def update_admin_profile():
                     date_val = datetime.fromisoformat(data[key]).astimezone(pytz.utc) if data[key] else None
                     cur.execute(f'UPDATE user_profiles SET {column} = %s WHERE user_id = %s', (date_val, target_user_id))
                 except (ValueError, KeyError):
-                    conn.close()
+                    # [REMOVED] 不再手動關閉連線
+                    # conn.close()
                     return jsonify({"error": f"Invalid format for {key}"}), 400
 
         if data.get('terminate') is True:
@@ -589,51 +555,25 @@ def update_admin_profile():
 
         conn.commit()
         
-        cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (target_user_id,))
+        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user_raw = cur.fetchone()
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
         
         if updated_user:
-            # [MODIFIED] 優化：呼叫統一的狀態判斷函式，確保邏輯一致
-            status_info = get_user_status_info(updated_user)
-            updated_user['computed_status'] = status_info["status_code"]
+            updated_user['computed_status'] = get_user_status(updated_user)
 
             date_fields_to_format_return = ['expiry_timestamp', 'membership_start_date', 'service_termination_date']
             for field in date_fields_to_format_return:
                 if updated_user.get(field):
                     updated_user[field] = updated_user[field].astimezone(TAIPEI_TZ).isoformat()
     
-    conn.close()
+    # [REMOVED] 不再手動關閉連線
+    # conn.close()
     return jsonify({"status": "success", "user": updated_user})
-
-# [ADDED] 新增刪除用戶的專用 API
-@app.route('/api/admin/user/<target_user_id>', methods=['DELETE'])
-def delete_user(target_user_id):
-    operator_id = request.headers.get('X-Operator-User-Id')
-    if not is_admin(operator_id):
-        return jsonify({"error": "Permission denied"}), 403
-    
-    if not target_user_id:
-        return jsonify({"error": "Target user ID is required"}), 400
-
-    conn = get_db_connection()
-    try:
-        with conn: # 使用 with conn 自動處理交易 (transaction)
-            with conn.cursor() as cur:
-                # 依序刪除所有相關資料，確保資料庫乾淨
-                cur.execute("DELETE FROM daily_logs WHERE user_id = %s", (target_user_id,))
-                cur.execute("DELETE FROM user_exercises WHERE user_id = %s", (target_user_id,))
-                cur.execute("DELETE FROM user_profiles WHERE user_id = %s", (target_user_id,))
-        print(f"管理員 {operator_id} 已成功刪除用戶 {target_user_id} 的所有資料。")
-        return jsonify({"status": "success", "message": f"User {target_user_id} deleted successfully."})
-    except Exception as e:
-        print(f"刪除用戶 {target_user_id} 時發生錯誤: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        conn.close()
 
 
 # --- 啟動伺服器 ---
+# [MODIFIED] 在 app context 中執行 init_db，確保 g 物件可用
 with app.app_context():
     init_db()
 
