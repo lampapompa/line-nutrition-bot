@@ -179,9 +179,8 @@ async function loadProfileData() {
     // 根據填充的資料，執行相關的計算與UI更新
     updateProfileCalculations();
 
-    // ******** 【修改點】 ********
-    // 舊的 updateMembershipBanner() 函式將被新的 updateMembershipCard() 取代
-    updateMembershipCard();
+    // 【修改點一】每次载入最新资料后，都手动更新一次会籍显示
+    updateMembershipBanner();
 
     // 更新熱量目標按鈕的選中狀態
     document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
@@ -214,7 +213,7 @@ function triggerAutosave() {
                 })
             });
             const dayEl = document.querySelector(`.calendar-day[data-day='${currentDate.getDate()}']`);
-            if(dayEl) dayEl.classList.add('completed');
+            if (dayEl) dayEl.classList.add('completed');
         } catch (error) {
             console.error(`自動儲存 ${formatDate(currentDate)} 的資料失敗:`, error);
             showToast('紀錄儲存失敗');
@@ -338,9 +337,8 @@ function switchTab(tabName) {
         updateGoalDashboard();
     } else if (tabName === 'profile') {
         document.getElementById('calc-footnote').style.display = 'block';
-        // ******** 【修改點】 ********
-        // 確保切換回來時也能正確更新
-        updateMembershipCard();
+        // 【修改點二】切换到个人档案页时，也手动更新一次会籍显示
+        updateMembershipBanner();
     } else {
         document.getElementById('calc-footnote').style.display = 'none';
     }
@@ -406,8 +404,8 @@ function updateGoalOptions(tdee) {
         maintainBtn.querySelector('span').textContent = `${maintainKcal} kcal`;
         mildLossBtn.querySelector('span:first-of-type').textContent = `${mildLossKcal} kcal`;
         lossBtn.querySelector('span:first-of-type').textContent = `${lossKcal} kcal`;
-        document.getElementById('mild-loss-estimate').textContent = `≈ ${((300*7)/7700).toFixed(2)} 公斤/週`;
-        document.getElementById('loss-estimate').textContent = `≈ ${((500*7)/7700).toFixed(2)} 公斤/週`;
+        document.getElementById('mild-loss-estimate').textContent = `≈ ${((300 * 7) / 7700).toFixed(2)} 公斤/週`;
+        document.getElementById('loss-estimate').textContent = `≈ ${((500 * 7) / 7700).toFixed(2)} 公斤/週`;
         maintainBtn.dataset.finalKcal = maintainKcal; mildLossBtn.dataset.finalKcal = mildLossKcal; lossBtn.dataset.finalKcal = lossKcal;
     } else {
         [maintainBtn, mildLossBtn, lossBtn].forEach(btn => btn.querySelector('span:first-of-type').textContent = '---');
@@ -538,15 +536,15 @@ async function renderCalendar(year, month) {
             });
             calendarDays.appendChild(dayEl);
         }
-    } catch(e) { console.error("渲染日曆失敗", e) }
+    } catch (e) { console.error("渲染日曆失敗", e) }
 }
 
 async function renderChart(range = '7days') {
     try {
         const apiResponse = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
-        
+
         // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
-        const chartData = { 
+        const chartData = {
             labels: apiResponse.labels,
             weight: apiResponse.weight,
             calories: apiResponse.calories,
@@ -554,7 +552,7 @@ async function renderChart(range = '7days') {
             exercise: apiResponse.exercise,
             capsule: apiResponse.capsule,
         };
-        
+
         const ctx = document.getElementById('trendsChart').getContext('2d');
         if (trendsChart) trendsChart.destroy();
 
@@ -628,9 +626,9 @@ async function renderChart(range = '7days') {
         });
 
         document.querySelectorAll('.chart-toggle').forEach((el, index) => {
-             el.checked = trendsChart.isDatasetVisible(index);
+            el.checked = trendsChart.isDatasetVisible(index);
         });
-        
+
         updateAverages(apiResponse);
 
     } catch (e) { console.error("渲染圖表失敗", e) }
@@ -640,13 +638,13 @@ function updateAverages(apiResponse) {
     const averagesDiv = document.getElementById('averages-display');
     if (!averagesDiv) return;
 
-    const averages = apiResponse.averages || {}; 
+    const averages = apiResponse.averages || {};
 
     const avgWeight = averages.weight;
     const avgCalories = averages.calories;
     const avgWater = averages.water;
     const avgCapsule = averages.capsule;
-    
+
     const formatAverage = (avg, unit, decimalPlaces = 1) => {
         if (avg === null || typeof avg === 'undefined') {
             return 'N/A';
@@ -765,7 +763,7 @@ function setupEventListeners() {
                 updateLocalProfileValue(keyMap[event.target.id], event.target.value);
             }
 
-            if(el.id === 'exercise-goal-text') {
+            if (el.id === 'exercise-goal-text') {
                 triggerProfileAutosave();
             } else {
                 updateProfileCalculations();
@@ -780,18 +778,18 @@ function setupEventListeners() {
     document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
     document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
     document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value, e.target));
-    
+
     const showAllBtn = document.getElementById('show-all-btn');
     if (showAllBtn) showAllBtn.addEventListener('click', showAllChartDatasets);
     const hideAllBtn = document.getElementById('hide-all-btn');
     if (hideAllBtn) hideAllBtn.addEventListener('click', hideAllChartDatasets);
-    
+
     document.querySelectorAll('.user-exercise-input').forEach(el => {
         el.addEventListener('input', triggerExerciseDbAutosave);
     });
-    
+
     const appElement = document.getElementById('app');
-    if(appElement) {
+    if (appElement) {
         appElement.addEventListener('click', (event) => {
             const clearButton = event.target.closest('.clear-input-btn');
             if (clearButton) {
@@ -822,14 +820,14 @@ function setupEventListeners() {
             waterInput.dispatchEvent(new Event('input', { bubbles: true }));
         });
     });
-    
+
     document.getElementById('quick-add-exercise').addEventListener('click', (event) => {
         const target = event.target.closest('button.quick-add-btn');
         if (!target) return;
 
         const type = target.dataset.type;
         const duration = parseInt(target.dataset.duration);
-        
+
         const name = target.dataset.name;
         const kcal = parseInt(target.dataset.kcal);
 
@@ -846,7 +844,7 @@ function setupEventListeners() {
         }
 
         if (type && !isNaN(duration)) {
-             const bmr = userProfileData.bmr;
+            const bmr = userProfileData.bmr;
             if (!bmr) {
                 alert("請先到「個人檔案」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
                 switchTab('profile');
@@ -916,12 +914,12 @@ function renderUserExerciseButtons() {
             .map(item =>
                 `<button class="quick-add-btn" data-name="${item.exercise_name}" data-kcal="${item.kcal}">${item.exercise_name} +${item.kcal}kcal</button>`
             ).join('');
-        
+
         if (customButtonsHtml) {
-             htmlContent += (htmlContent ? ' ' : '') + customButtonsHtml;
+            htmlContent += (htmlContent ? ' ' : '') + customButtonsHtml;
         }
     }
-    
+
     container.innerHTML = htmlContent;
 }
 
@@ -998,7 +996,7 @@ async function main() {
 
         // 唯一權限檢查點：如果 loadProfileData 失敗 (後端回傳 403)，直接跳到 catch
         await loadProfileData();
-        
+
         // --- 如果程式能走到這裡，代表權限驗證通過 ---
 
         // [MODIFIED] 不再需要前端判斷 Trial 狀態來顯示橫幅，因為後端會直接提供
@@ -1008,10 +1006,10 @@ async function main() {
         //         document.getElementById('trial-banner').classList.remove('hidden');
         //     }
         // }
-        
+
         // [MODIFIED] 此函式現在只會顯示後端準備好的資訊，不再進行判斷
         updateMembershipBanner();
-        
+
         if (userProfileData.membership_start_date) {
             document.getElementById('membership-range-btn').classList.remove('hidden');
         } else {
@@ -1029,21 +1027,21 @@ async function main() {
             }).catch(error => console.error('名稱自動同步失敗:', error));
         }
 
-        if(isViewingAsAdmin) {
+        if (isViewingAsAdmin) {
             document.getElementById('target-user-display-name').textContent = userProfileData.admin_nickname || userProfileData.display_name || '該用戶';
             const adminNotesContent = document.getElementById('admin-notes-content');
             const adminNotesDisplay = document.getElementById('admin-notes-display');
-            if(userProfileData.admin_notes) {
+            if (userProfileData.admin_notes) {
                 adminNotesContent.textContent = userProfileData.admin_notes;
                 adminNotesDisplay.classList.remove('hidden');
             }
         }
-        
+
         await loadUserExercises();
         renderUserExerciseButtons();
         renderProfileQuickExerciseButtons();
 
-        document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active','text-gray-900');
+        document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active', 'text-gray-900');
         document.getElementById('log-tab').classList.remove('hidden');
         document.getElementById('calc-footnote').style.display = 'block';
 
