@@ -38,10 +38,11 @@
                         <th class="py-3 px-4 text-left">狀態</th>
                         <th class="py-3 px-6 text-left min-w-[480px]">權限設定</th>
                         <th class="py-3 px-4 text-left">備註</th>
+                        <th class="py-3 px-4 text-left">操作</th>
                     </tr>
                 </thead>
                 <tbody id="user-list-body" class="text-gray-700">
-                    </tbody>
+                </tbody>
             </table>
         </div>
     </div>
@@ -96,25 +97,48 @@
 
             let statusClass = '';
             let statusText = '';
-            // [MODIFIED] 新增「注意」狀態的判斷與樣式
-            if (user.computed_status === 'Active') {
-                statusClass = 'bg-green-200 text-green-800';
-                statusText = '有效';
-            } else if (user.computed_status === 'Trial') {
-                statusClass = 'bg-blue-200 text-blue-800';
-                statusText = '試用';
-            } else if (user.computed_status === 'Attention') {
-                statusClass = 'bg-orange-200 text-orange-800';
-                statusText = '注意';
-            } else if (user.computed_status === 'Terminated') {
-                statusClass = 'bg-red-200 text-red-800';
-                statusText = '已終止';
-            } else {
-                statusClass = 'bg-gray-200 text-gray-800';
-                statusText = '未知';
+            
+            // [MODIFIED] 擴充狀態顯示，對應後端新的所有狀態碼
+            switch (user.computed_status) {
+                case 'VIP':
+                    statusClass = 'bg-yellow-400 text-yellow-900';
+                    statusText = 'VIP';
+                    break;
+                case 'Active':
+                    statusClass = 'bg-green-200 text-green-800';
+                    statusText = '有效';
+                    break;
+                case 'Trial':
+                    statusClass = 'bg-blue-200 text-blue-800';
+                    statusText = '試用';
+                    break;
+                case 'Reserved': // 原 Attention
+                    statusClass = 'bg-cyan-200 text-cyan-800';
+                    statusText = '預約';
+                    break;
+                case 'Abnormal': // 原 Attention
+                    statusClass = 'bg-orange-200 text-orange-800';
+                    statusText = '異常';
+                    break;
+                case 'Terminated':
+                    statusClass = 'bg-red-200 text-red-800';
+                    statusText = '中止';
+                    break;
+                case 'Expired':
+                    statusClass = 'bg-gray-400 text-gray-800';
+                    statusText = '已過期';
+                    break;
+                default:
+                    statusClass = 'bg-gray-200 text-gray-800';
+                    statusText = '未知';
             }
+            
+            // [ADDED] 根據 is_vip 狀態決定 VIP 按鈕的文字和樣式
+            const isVip = user.is_vip;
+            const vipButtonText = isVip ? '取消VIP' : '設為VIP';
+            const vipButtonClass = isVip ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-gray-500 hover:bg-gray-600';
 
-            // [MODIFIED] 將日期輸入框改為標準的 datetime-local，解決手機版問題
+
             return `
                 <tr id="user-row-${user.user_id}" class="border-b border-gray-200 hover:bg-gray-50 align-top">
                     <td class="py-3 px-4 pt-5">
@@ -138,22 +162,22 @@
                             <label class="text-gray-600 w-20 text-right">會員起日:</label>
                             <input type="datetime-local" value="${startValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'membershipStartDate', this.value)"
-                                   class="border rounded px-1 py-0.5 text-xs w-40">
-                            <button onclick="handleDateUpdate('${user.user_id}', 'membershipStartDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                                   class="border rounded px-1 py-0.5 text-xs w-40" ${isVip ? 'disabled' : ''}>
+                            <button onclick="handleDateUpdate('${user.user_id}', 'membershipStartDate', null)" class="text-red-500 hover:text-red-700 text-xs" ${isVip ? 'hidden' : ''}>清除</button>
                         </div>
                         <div class="flex items-center space-x-2">
                             <label class="text-gray-600 w-20 text-right">會員迄日:</label>
                             <input type="datetime-local" value="${endValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'expiryTimestamp', this.value)"
-                                   class="border rounded px-1 py-0.5 text-xs w-40">
-                            <button onclick="handleDateUpdate('${user.user_id}', 'expiryTimestamp', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                                   class="border rounded px-1 py-0.5 text-xs w-40" ${isVip ? 'disabled' : ''}>
+                            <button onclick="handleDateUpdate('${user.user_id}', 'expiryTimestamp', null)" class="text-red-500 hover:text-red-700 text-xs" ${isVip ? 'hidden' : ''}>清除</button>
                         </div>
                         <div class="flex items-center space-x-2">
                             <label class="text-gray-600 w-20 text-right">服務終止日:</label>
                             <input type="datetime-local" value="${termValue}"
                                    onchange="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', this.value)"
-                                   class="border rounded px-1 py-0.5 text-xs w-40">
-                            <button onclick="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', null)" class="text-red-500 hover:text-red-700 text-xs">清除</button>
+                                   class="border rounded px-1 py-0.5 text-xs w-40" ${isVip ? 'disabled' : ''}>
+                            <button onclick="handleDateUpdate('${user.user_id}', 'serviceTerminationDate', null)" class="text-red-500 hover:text-red-700 text-xs" ${isVip ? 'hidden' : ''}>清除</button>
                         </div>
                         <div class="flex items-center space-x-2 pt-2">
                             <div class="w-20"></div>
@@ -165,6 +189,10 @@
                                   onchange="handleFieldUpdate('${user.user_id}', 'adminNotes', this.value)"
                                   class="w-full border rounded px-2 py-1 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" 
                                   placeholder="新增備註...">${user.admin_notes || ''}</textarea>
+                    </td>
+                    <td class="py-3 px-4 pt-2 space-y-2">
+                        <button onclick="handleSetVip('${user.user_id}', ${!isVip})" class="w-full text-white px-3 py-1 text-xs rounded transition-colors ${vipButtonClass}">${vipButtonText}</button>
+                        <button onclick="handleDeleteUser('${user.user_id}', '${displayName}')" class="w-full bg-red-800 text-white px-3 py-1 text-xs rounded hover:bg-red-900 transition-colors">刪除用戶</button>
                     </td>
                 </tr>
             `;
@@ -201,6 +229,51 @@
             if (confirm(`確定要立即終止這位會員的所有服務嗎？\n此操作無法復原，會員將立即無法登入。`)) {
                 const updatedUser = await updateUser(userId, { terminate: true });
                 if (updatedUser) updateRowUI(userId, updatedUser);
+            }
+        }
+
+        // [ADDED] 新增設為 VIP 的處理函式
+        async function handleSetVip(userId, setToVip) {
+            const actionText = setToVip ? '設為' : '取消';
+            const confirmMessage = setToVip 
+                ? `確定要將這位會員設為 VIP 嗎？\n他們將擁有不受時間限制的永久權限。`
+                : `確定要取消這位會員的 VIP 身份嗎？\n系統將會根據他們原有的日期設定來重新判斷會籍。`;
+
+            if (confirm(confirmMessage)) {
+                const updatedUser = await updateUser(userId, { setVip: setToVip });
+                if (updatedUser) updateRowUI(userId, updatedUser);
+            }
+        }
+
+        // [ADDED] 新增刪除用戶的處理函式
+        async function handleDeleteUser(userId, displayName) {
+            const confirmMessage = `【高風險操作】\n\n您確定要永久刪除用戶「${displayName}」嗎？\n\n此操作會將該用戶的【所有個人檔案、每日日誌、運動設定】從資料庫中徹底移除，且無法復原！\n\n(此功能主要用於清除測試帳號)`;
+            
+            if (confirm(confirmMessage)) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/admin/user/${userId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Operator-User-Id': currentAdminId
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || '刪除失敗');
+                    }
+                    
+                    showToast(`用戶 ${displayName} 已成功刪除！`);
+                    // 從畫面上移除該列
+                    const rowElement = document.getElementById(`user-row-${userId}`);
+                    if (rowElement) {
+                        rowElement.remove();
+                    }
+                } catch (error) {
+                    console.error('刪除失敗:', error);
+                    showToast(`刪除失敗: ${error.message}`);
+                }
             }
         }
 
