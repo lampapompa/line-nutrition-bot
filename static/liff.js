@@ -310,29 +310,56 @@ async function showNextMonth() {
     await loadLogDataForDate(currentDate);
 }
 
+// ===== ▼▼▼ START: 此函式為本次主要修改處 ▼▼▼ =====
 async function updateChartRange(range, element = null) {
+    // 按鈕點擊樣式處理
     document.querySelectorAll('.range-btn').forEach(btn => {
         btn.classList.remove('active', 'bg-emerald-500', 'text-white');
         btn.classList.add('bg-gray-200');
     });
-    if (element) {
-        if (element.tagName === 'BUTTON') {
-            element.classList.add('active', 'bg-emerald-500', 'text-white');
-            element.classList.remove('bg-gray-200');
-        }
+
+    if (element && element.tagName === 'BUTTON') {
+        element.classList.add('active', 'bg-emerald-500', 'text-white');
+        element.classList.remove('bg-gray-200');
+        // 點擊按鈕時，清空自訂日期選擇器
+        document.getElementById('start-date-picker').value = '';
+        document.getElementById('end-date-picker').value = '';
+    }
+    
+    // 如果是來自日期選擇器的呼叫，則不清空按鈕樣式
+    if (element && (element.id === 'start-date-picker' || element.id === 'end-date-picker')) {
+        // 不需要特別處理按鈕樣式
     }
 
-    let finalRange = range;
-    if (range === 'membership_period') {
-        if (userProfileData.membership_start_date) {
-            finalRange = userProfileData.membership_start_date.split('T')[0];
-        } else {
-            finalRange = '7days';
-            document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
+    let params = '';
+    if (range === 'custom_date') {
+        const startDate = document.getElementById('start-date-picker').value;
+        const endDate = document.getElementById('end-date-picker').value;
+        if (startDate && endDate) { // 確保兩個日期都有值才發送請求
+            params = `?userId=${userToLoad}&startDate=${startDate}&endDate=${endDate}`;
+            await renderChart(params);
         }
+        // 如果日期不完整，則不執行任何操作
+        return; 
+    } else if (range === 'membership_period') {
+        if (userProfileData.membership_start_date) {
+            const startDate = userProfileData.membership_start_date.split('T')[0];
+            params = `?userId=${userToLoad}&range=${startDate}`;
+        } else {
+            // Fallback 到 7 天
+            params = `?userId=${userToLoad}&range=7days`;
+            document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
+            return;
+        }
+    } else {
+        // 處理 '7days', '14days' 等
+        params = `?userId=${userToLoad}&range=${range}`;
     }
-    await renderChart(finalRange);
+    
+    await renderChart(params);
 }
+// ===== ▲▲▲ END: 此函式為本次主要修改處 ▲▲▲ =====
+
 
 function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
 
@@ -574,9 +601,14 @@ async function renderCalendar(year, month) {
     } catch (e) { console.error("渲染日曆失敗", e) }
 }
 
-async function renderChart(range = '7days') {
+async function renderChart(params) {
+    // 原本的 renderChart 函式現在只接收 params 字串
+    if (!params) {
+        // 提供一個預設值，例如，如果沒有參數就載入最近7天
+        params = `?userId=${userToLoad}&range=7days`;
+    }
     try {
-        const apiResponse = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
+        const apiResponse = await fetchAPI(`/api/trends${params}`);
 
         // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
         const chartData = {
@@ -812,7 +844,13 @@ function setupEventListeners() {
     document.getElementById('prev-month-btn').addEventListener('click', showPrevMonth);
     document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
     document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
-    document.getElementById('start-date-picker').addEventListener('change', (e) => updateChartRange(e.target.value, e.target));
+    
+    // ===== ▼▼▼ START: 此處為本次修改點 ▼▼▼ =====
+    // 修改原本的事件監聽，讓兩個日期選擇器共用一個處理邏輯
+    document.getElementById('start-date-picker').addEventListener('change', () => updateChartRange('custom_date', document.getElementById('start-date-picker')));
+    document.getElementById('end-date-picker').addEventListener('change', () => updateChartRange('custom_date', document.getElementById('end-date-picker')));
+    // ===== ▲▲▲ END: 此處為本次修改點 ▲▲▲ =====
+
 
     const showAllBtn = document.getElementById('show-all-btn');
     if (showAllBtn) showAllBtn.addEventListener('click', showAllChartDatasets);
