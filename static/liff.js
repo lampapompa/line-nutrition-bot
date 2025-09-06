@@ -517,8 +517,7 @@ function updateGoalDashboard() {
 
     const remainingEl = document.getElementById('calories-remaining');
     if (goalCalories > 0) {
-        const exerciseBurn = parseInt(document.querySelector('[data-field="exercise_kcal"]').value) || 0;
-        const remaining = goalCalories - todayCalories + exerciseBurn;
+        const remaining = goalCalories - todayCalories;
         if (remaining >= 0) {
             remainingEl.textContent = `還可攝取: ${remaining} kcal`;
             remainingEl.classList.remove('text-red-500');
