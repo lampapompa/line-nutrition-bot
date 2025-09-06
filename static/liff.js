@@ -366,6 +366,7 @@ function switchTab(tabName) {
 
     if (tabName === 'trends') {
         document.getElementById('calc-footnote').style.display = 'none';
+        updateTrendsMembershipInfo(); // <--- 【修改點】
         renderChart();
     } else if (tabName === 'log') {
         document.getElementById('calc-footnote').style.display = 'block';
@@ -1003,6 +1004,30 @@ function updateMembershipBanner() {
     }
 }
 
+// ===== ▼▼▼ START: 新增的函式 ▼▼▼ =====
+function updateTrendsMembershipInfo() {
+    // 更新頂部標題 (e.g., "會籍有效 (剩 5 天)")
+    const displayDiv = document.getElementById('membership-dates-display-trends');
+    if (!displayDiv) return;
+    const bannerInfo = userProfileData.banner_info;
+    if (bannerInfo && bannerInfo.text && bannerInfo.color_class) {
+        displayDiv.textContent = bannerInfo.text;
+        displayDiv.className = `text-sm px-3 py-1 rounded-full ${bannerInfo.color_class}`;
+    } else {
+        displayDiv.textContent = '會籍狀態讀取中...';
+        displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-800';
+    }
+
+    // 更新上次更新時間
+    document.getElementById('last-updated-trends').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
+
+    // 更新詳細日期
+    document.getElementById('display-membership-start-trends').textContent = formatDetailedDate(userProfileData.membership_start_date);
+    document.getElementById('display-membership-end-trends').textContent = formatDetailedDate(userProfileData.expiry_timestamp);
+    document.getElementById('display-membership-termination-trends').textContent = formatDetailedDate(userProfileData.service_termination_date);
+}
+// ===== ▲▲▲ END: 新增的函式 ▲▲▲ =====
+
 
 async function main() {
     try {
@@ -1082,6 +1107,8 @@ async function main() {
         await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
         await loadLogDataForDate(currentDate);
         setupEventListeners();
+
+        updateTrendsMembershipInfo(); // <--- 【修改點】
 
     } catch (error) {
         if (error.status === 403) {
