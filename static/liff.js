@@ -179,8 +179,9 @@ async function loadProfileData() {
     // 根據填充的資料，執行相關的計算與UI更新
     updateProfileCalculations();
 
-    // 【修改點一】每次载入最新资料后，都手动更新一次会籍显示
-    updateMembershipBanner();
+    // ******** 【修改點】 ********
+    // 舊的 updateMembershipBanner() 函式將被新的 updateMembershipCard() 取代
+    updateMembershipCard();
 
     // 更新熱量目標按鈕的選中狀態
     document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
@@ -337,8 +338,9 @@ function switchTab(tabName) {
         updateGoalDashboard();
     } else if (tabName === 'profile') {
         document.getElementById('calc-footnote').style.display = 'block';
-        // 【修改點二】切换到个人档案页时，也手动更新一次会籍显示
-        updateMembershipBanner();
+        // ******** 【修改點】 ********
+        // 確保切換回來時也能正確更新
+        updateMembershipCard();
     } else {
         document.getElementById('calc-footnote').style.display = 'none';
     }
