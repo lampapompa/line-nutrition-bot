@@ -55,7 +55,7 @@ def init_db():
     # [MODIFIED] init_db 現在也從 get_db_connection 獲取連線
     conn = get_db_connection()
     with conn.cursor() as cur:
-        # ... (此處 CREATE TABLE 的內容完全不變)
+        # [新增 is_vip 欄位]
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
@@ -106,7 +106,8 @@ def init_db():
             'admin_nickname': 'VARCHAR(255)',
             'membership_start_date': 'TIMESTAMPTZ',
             'service_termination_date': 'TIMESTAMPTZ',
-            'exercise_goal_text': 'TEXT'
+            'exercise_goal_text': 'TEXT',
+            'is_vip': 'BOOLEAN DEFAULT FALSE' # [新增 is_vip 欄位檢查]
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -126,11 +127,8 @@ def init_db():
             print("欄位型態修改完成。")
 
     conn.commit()
-    # [REMOVED] 不再手動關閉連線，交由 teardown 函式自動歸還
-    # conn.close() 
     print("資料庫初始化檢查完成。")
 
-# ... (is_admin, get_user_status, check_user_active 等所有業務邏輯函式保持完全不變) ...
 # --- 權限與身份驗證輔助函式 ---
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
@@ -143,6 +141,10 @@ def get_user_status(user_profile):
     if not user_profile:
         return "Trial" 
 
+    # [修改] VIP 狀態優先判斷
+    if user_profile.get('is_vip'):
+        return "VIP"
+
     now_utc = datetime.now(pytz.utc)
     term_date = user_profile.get('service_termination_date')
     start_date = user_profile.get('membership_start_date')
@@ -151,11 +153,16 @@ def get_user_status(user_profile):
     if term_date and term_date <= now_utc:
         return "Terminated"
     if start_date and start_date > now_utc:
-        return "Attention"
+        return "Reserved" # [文字修改] "Attention" -> "Reserved" (預約)
     if end_date and end_date >= now_utc:
         return "Active"
     if end_date and end_date < now_utc:
         return "Expired"
+    
+    # [新增] 異常狀態判斷: 有結束日但沒有開始日
+    if end_date and not start_date:
+        return "Abnormal"
+
     return "Trial"
 
 def check_user_active(user_id):
@@ -166,14 +173,13 @@ def check_user_active(user_id):
         return (True, "Admin")
 
     conn = get_db_connection()
+    # [修改] 增加查詢 is_vip
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute("SELECT membership_start_date, expiry_timestamp, service_termination_date FROM user_profiles WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT membership_start_date, expiry_timestamp, service_termination_date, is_vip FROM user_profiles WHERE user_id = %s", (user_id,))
         user = cur.fetchone()
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
 
     status = get_user_status(user)
-    is_active = status in ["Admin", "Active", "Trial", "Attention"]
+    is_active = status in ["Admin", "Active", "Trial", "Reserved", "VIP"]
     
     return (is_active, status)
 
@@ -207,7 +213,6 @@ def to_float_or_none(value):
 
 
 # --- API 端點 ---
-# [MODIFIED] 所有 API 端點現在都使用新的連線管理方式
 @app.route('/api/check_status', methods=['GET'])
 def check_status():
     user_id = request.args.get('userId')
@@ -285,7 +290,7 @@ def handle_profile():
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
                 _is_active, status_string = check_user_active(user_id)
-                profile_dict['status'] = status_string
+                profile_dict['computed_status'] = status_string # [修改] 使用 computed_status 
 
                 profile_dict['days_remaining'] = None
                 if profile.get('expiry_timestamp'):
@@ -297,9 +302,6 @@ def handle_profile():
                 return jsonify(profile_dict)
             
             return jsonify({})
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
-
 
 @app.route('/api/log', methods=['GET', 'POST'])
 def handle_log():
@@ -349,8 +351,6 @@ def handle_log():
                 "previous_day_weight": previous_day_weight
             }
             return jsonify(response_data)
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
 
 @app.route('/api/user-exercises', methods=['GET', 'POST'])
 def handle_user_exercises():
@@ -397,8 +397,6 @@ def handle_user_exercises():
             conn.commit()
             return jsonify({"status": "success", "message": "User exercises saved."})
     
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
     return jsonify({"error": "Method not allowed"}), 405
 
 
@@ -413,8 +411,6 @@ def get_completion_dots():
     with conn.cursor() as cur:
         cur.execute('''SELECT DISTINCT EXTRACT(DAY FROM log_date) FROM daily_logs WHERE user_id = %s AND EXTRACT(YEAR FROM log_date) = %s AND EXTRACT(MONTH FROM log_date) = %s AND (breakfast_kcal IS NOT NULL OR lunch_kcal IS NOT NULL OR dinner_kcal IS NOT NULL OR snacks_kcal IS NOT NULL OR drinks_kcal IS NOT NULL)''', (user_id, year, month))
         days_with_logs = [int(item[0]) for item in cur.fetchall()]
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
     return jsonify(days_with_logs)
 
 @app.route('/api/trends', methods=['GET'])
@@ -461,8 +457,6 @@ def get_trends():
                 (SELECT AVG(capsule_qty) FROM PeriodLogs) as avg_capsule
         ''', (user_id, start_date, end_date))
         result = cur.fetchone()
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
     
     logs = result['logs'] if result and result['logs'] else []
     
@@ -475,7 +469,9 @@ def get_trends():
 
     total_days = (end_date - start_date).days + 1
     labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range(total_days)]
-    logs_dict = {log['log_date'].strftime('%Y-%m-%d'): log for log in logs}
+    
+    # [BUG FIX] 直接使用從 JSON 來的日期字串當 key
+    logs_dict = {log['log_date']: log for log in logs}
     
     trend_data = {
         'weight': [logs_dict.get((start_date + timedelta(days=i)).strftime('%Y-%m-%d'), {}).get('daily_weight') for i in range(total_days)],
@@ -501,7 +497,8 @@ def get_all_users():
     if not is_admin(operator_id): return jsonify({"error": "Permission denied"}), 403
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
+        # [修改] 增加查詢 is_vip
+        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated, is_vip FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
         users = []
         for row in cur.fetchall():
             user = dict(row)
@@ -514,8 +511,6 @@ def get_all_users():
                     user[field] = user[field].astimezone(TAIPEI_TZ).isoformat()
 
             users.append(user)
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
     return jsonify(users)
 
 @app.route('/api/admin/profile', methods=['POST'])
@@ -532,6 +527,16 @@ def update_admin_profile():
             cur.execute('UPDATE user_profiles SET admin_notes = %s WHERE user_id = %s', (data['adminNotes'], target_user_id))
         if 'adminNickname' in data:
             cur.execute('UPDATE user_profiles SET admin_nickname = %s WHERE user_id = %s', (data['adminNickname'], target_user_id))
+        
+        # [新增] 處理 VIP 狀態
+        if 'setVip' in data:
+            is_vip = data.get('setVip')
+            cur.execute('UPDATE user_profiles SET is_vip = %s WHERE user_id = %s', (is_vip, target_user_id))
+            if is_vip:
+                print(f"使用者 {target_user_id} 已被設為 VIP。")
+            else:
+                print(f"使用者 {target_user_id} 的 VIP 資格已被取消。")
+
 
         date_fields = {
             'membershipStartDate': 'membership_start_date',
@@ -544,8 +549,6 @@ def update_admin_profile():
                     date_val = datetime.fromisoformat(data[key]).astimezone(pytz.utc) if data[key] else None
                     cur.execute(f'UPDATE user_profiles SET {column} = %s WHERE user_id = %s', (date_val, target_user_id))
                 except (ValueError, KeyError):
-                    # [REMOVED] 不再手動關閉連線
-                    # conn.close()
                     return jsonify({"error": f"Invalid format for {key}"}), 400
 
         if data.get('terminate') is True:
@@ -555,7 +558,8 @@ def update_admin_profile():
 
         conn.commit()
         
-        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date FROM user_profiles WHERE user_id = %s', (target_user_id,))
+        # [修改] 增加查詢 is_vip
+        cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, is_vip FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user_raw = cur.fetchone()
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
         
@@ -567,13 +571,36 @@ def update_admin_profile():
                 if updated_user.get(field):
                     updated_user[field] = updated_user[field].astimezone(TAIPEI_TZ).isoformat()
     
-    # [REMOVED] 不再手動關閉連線
-    # conn.close()
     return jsonify({"status": "success", "user": updated_user})
+
+# [新增] 刪除使用者的 API Endpoint
+@app.route('/api/admin/user/<string:user_id>', methods=['DELETE'])
+def delete_user(user_id):
+    operator_id = request.headers.get('X-Operator-User-Id')
+    if not is_admin(operator_id):
+        return jsonify({"error": "Permission denied"}), 403
+
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        try:
+            # 確保先刪除有參考 user_id 的資料表紀錄
+            cur.execute("DELETE FROM daily_logs WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM user_exercises WHERE user_id = %s", (user_id,))
+            
+            # 最後再刪除 user_profiles 中的主紀錄
+            cur.execute("DELETE FROM user_profiles WHERE user_id = %s", (user_id,))
+            
+            conn.commit()
+            print(f"使用者 {user_id} 的所有資料已被管理員 {operator_id} 成功刪除。")
+            return jsonify({"status": "success", "message": "User deleted successfully."})
+
+        except Exception as e:
+            conn.rollback() # 如果中途出錯，復原所有操作
+            print(f"刪除使用者 {user_id} 時發生錯誤: {e}")
+            return jsonify({"error": "Database error during deletion."}), 500
 
 
 # --- 啟動伺服器 ---
-# [MODIFIED] 在 app context 中執行 init_db，確保 g 物件可用
 with app.app_context():
     init_db()
 
