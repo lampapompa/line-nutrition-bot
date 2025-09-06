@@ -49,7 +49,6 @@ async function fetchAPI(endpoint, options = {}) {
     if (!response.ok) {
         const errorData = await response.json();
         console.error("API Error Response:", errorData);
-        // [MODIFIED] 將狀態碼也拋出，便於前端做權限判斷
         const error = new Error(errorData.error || `HTTP error! status: ${response.status}`);
         error.status = response.status;
         throw error;
@@ -158,12 +157,12 @@ function triggerProfileAutosave() {
     }, 1500);
 }
 
-// [MODIFIED] loadProfileData 現在只負責載入和渲染資料，不再處理權限
 async function loadProfileData() {
     if (!userToLoad) return;
     const data = await fetchAPI(`/api/profile?userId=${userToLoad}`);
-    userProfileData = { ...userProfileData, ...data };
+    userProfileData = { ...userProfileData, ...data }; // 將從後端獲取的資料存到全域變數
 
+    // 填充個人檔案頁面的欄位
     document.getElementById('height').value = userProfileData.height || '';
     document.getElementById('profile-weight').value = userProfileData.profile_weight || '';
     document.getElementById('age').value = userProfileData.age || '';
@@ -177,8 +176,10 @@ async function loadProfileData() {
     document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
     document.getElementById('target-calories').value = userProfileData.target_calories || '';
 
+    // 根據填充的資料，執行相關的計算與UI更新
     updateProfileCalculations();
 
+    // 更新熱量目標按鈕的選中狀態
     document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
     if (userProfileData.target_calories) {
         setTimeout(() => {
@@ -533,12 +534,12 @@ async function renderCalendar(year, month) {
     } catch(e) { console.error("渲染日曆失敗", e) }
 }
 
-// [MODIFIED] 圖表最終版
 async function renderChart(range = '7days') {
     try {
-        // [MODIFIED] apiResponse 變數現在會包含圖表數據和後端計算好的平均值
         const apiResponse = await fetchAPI(`/api/trends?userId=${userToLoad}&range=${range}`);
-        const chartData = { // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
+        
+        // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
+        const chartData = { 
             labels: apiResponse.labels,
             weight: apiResponse.weight,
             calories: apiResponse.calories,
@@ -608,13 +609,11 @@ async function renderChart(range = '7days') {
                         max: maxWeight,
                     },
                     yKcal: {
-                        // [MODIFIED] BUG FIX: 將Y軸從對數改回線性，解決圖表崩潰問題
-                        type: 'linear',
+                        type: 'linear', // BUG FIX
                         position: 'right',
                         title: { display: true, text: 'kcal / c.c. / 包' },
                         grid: { drawOnChartArea: false },
-                        // [MODIFIED] BUG FIX: 確保Y軸從0開始，而不是1
-                        min: 0, 
+                        min: 0, // BUG FIX
                         max: finalRightAxisMax,
                     }
                 }
@@ -625,29 +624,22 @@ async function renderChart(range = '7days') {
              el.checked = trendsChart.isDatasetVisible(index);
         });
         
-        // [MODIFIED] 將完整的 API 回應傳遞給 updateAverages 函式
         updateAverages(apiResponse);
 
     } catch (e) { console.error("渲染圖表失敗", e) }
 }
 
-// [MODIFIED] 優化：此函式現在直接讀取後端算好的平均值，不再於前端計算
 function updateAverages(apiResponse) {
     const averagesDiv = document.getElementById('averages-display');
     if (!averagesDiv) return;
 
-    // [REMOVED] 前端計算邏輯已移除，改由後端處理
-    // const calculateAverage = (data) => { ... };
-
-    // [MODIFIED] 直接從 apiResponse 中讀取後端算好的 averages 物件
-    const averages = apiResponse.averages || {}; // 如果後端沒有提供 averages，則使用空物件以避免錯誤
+    const averages = apiResponse.averages || {}; 
 
     const avgWeight = averages.weight;
     const avgCalories = averages.calories;
     const avgWater = averages.water;
     const avgCapsule = averages.capsule;
     
-    // [MODIFIED] 簡化顯示邏輯
     const formatAverage = (avg, unit, decimalPlaces = 1) => {
         if (avg === null || typeof avg === 'undefined') {
             return 'N/A';
@@ -798,12 +790,9 @@ function setupEventListeners() {
             if (clearButton) {
                 const targetIdentifier = clearButton.dataset.target;
 
-                // [MODIFIED] BUG FIX: 修正運動清除按鈕的邏輯
                 if (targetIdentifier === 'exercise_text' || targetIdentifier === 'exercise_kcal') {
-                    // 如果清除的是運動相關欄位，則執行完整的清除函式
                     clearExercise();
                 } else {
-                    // 否則，執行原本的單一欄位清除邏輯
                     const inputElement = document.querySelector(`[data-field="${targetIdentifier}"]`) || document.getElementById(targetIdentifier);
                     if (inputElement) {
                         inputElement.value = '';
@@ -960,36 +949,22 @@ function updateMembershipBanner() {
     const displayDiv = document.getElementById('membership-dates-display');
     if (!displayDiv) return;
 
-    const { status, days_remaining } = userProfileData;
+    // [MODIFIED] 邏輯簡化：直接從 userProfileData 中讀取後端準備好的 banner_info
+    // 不再需要前端自己做 if/else 判斷
+    const bannerInfo = userProfileData.banner_info;
 
-    let fullText = '會籍狀態';
-    let labelClass = 'bg-gray-100 text-gray-800';
-
-    if (status === 'Active') {
-        labelClass = 'bg-green-100 text-green-800';
-        if (typeof days_remaining === 'number' && days_remaining >= 0) {
-            fullText = `會籍有效 | 剩下 ${days_remaining} 天，繼續加油！`;
-        } else {
-            fullText = '會籍有效';
-        }
-    } else if (status === 'Trial') {
-        labelClass = 'bg-yellow-100 text-yellow-800';
-        if (typeof days_remaining === 'number' && days_remaining >= 0) {
-            fullText = `體驗中 | 剩下 ${days_remaining} 天，把握機會！`;
-        } else {
-            fullText = '體驗中 (請洽管理員)';
-        }
+    if (bannerInfo && bannerInfo.text && bannerInfo.color_class) {
+        displayDiv.textContent = bannerInfo.text;
+        // 確保 className 的基礎樣式保留，只替換顏色相關的部分
+        displayDiv.className = `text-sm px-3 py-1 rounded-full ${bannerInfo.color_class}`;
     } else {
-        labelClass = 'bg-red-100 text-red-800';
-        fullText = '會籍已失效 (請洽管理員)';
+        // Fallback: 如果後端因故沒有提供 banner_info，則顯示一個通用訊息
+        displayDiv.textContent = '會籍狀態讀取中...';
+        displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-800';
     }
-
-    displayDiv.textContent = fullText;
-    displayDiv.className = `text-sm px-3 py-1 rounded-full ${labelClass}`;
 }
 
 
-// [MODIFIED] 重構 main 函式以實現後端唯一權限判斷
 async function main() {
     try {
         await liff.init({ liffId });
@@ -1019,12 +994,15 @@ async function main() {
         
         // --- 如果程式能走到這裡，代表權限驗證通過 ---
 
-        if (!isViewingAsAdmin) {
-            if (userProfileData.status === 'Trial') {
-                document.getElementById('trial-banner').classList.remove('hidden');
-            }
-        }
+        // [MODIFIED] 不再需要前端判斷 Trial 狀態來顯示橫幅，因為後端會直接提供
+        // 這個 trial-banner 的顯示邏輯可以考慮移除或由後端控制
+        // if (!isViewingAsAdmin) {
+        //     if (userProfileData.status === 'Trial') {
+        //         document.getElementById('trial-banner').classList.remove('hidden');
+        //     }
+        // }
         
+        // [MODIFIED] 此函式現在只會顯示後端準備好的資訊，不再進行判斷
         updateMembershipBanner();
         
         if (userProfileData.membership_start_date) {
@@ -1067,7 +1045,6 @@ async function main() {
         setupEventListeners();
 
     } catch (error) {
-        // [MODIFIED] 捕捉權限錯誤 (403) 並顯示到期頁面
         if (error.status === 403) {
             document.getElementById('access-denied').classList.remove('hidden');
         } else {
