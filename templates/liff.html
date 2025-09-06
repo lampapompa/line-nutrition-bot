@@ -120,27 +120,10 @@
 
         <div id="tab-content">
             <div id="profile-tab" class="hidden space-y-4">
-                
                 <div class="flex justify-between items-center flex-wrap gap-2">
-                    <div></div> <p id="last-updated" class="text-xs text-gray-400"></p>
+                    <div id="membership-dates-display" class="text-sm px-3 py-1 rounded-full"></div>
+                    <p id="last-updated" class="text-xs text-gray-400"></p>
                 </div>
-                
-                <div id="membership-card" class="bg-white p-4 rounded-lg shadow-sm space-y-3">
-                    <h3 class="text-lg font-bold text-gray-800 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-emerald-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" /></svg>
-                        會籍資訊
-                    </h3>
-                    <div class="space-y-2 text-sm text-gray-600 pl-2 border-l-2 border-gray-200">
-                        <div class="flex"><p class="w-20 font-semibold">狀態：</p><p id="card-status" class="font-bold"></p></div>
-                        <div class="flex"><p class="w-20 font-semibold">課程起日：</p><p id="card-start-date"></p></div>
-                        <div class="flex"><p class="w-20 font-semibold">課程迄日：</p><p id="card-expiry-date"></p></div>
-                        <div class="flex"><p class="w-20 font-semibold">服務止日：</p><p id="card-termination-date"></p></div>
-                    </div>
-                    <div id="card-countdown-wrapper" class="pt-2 border-t border-gray-100">
-                        <p id="card-countdown-text" class="text-center font-semibold text-emerald-600"></p>
-                    </div>
-                </div>
-                
                 <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
                 <div><label class="block text-sm font-medium text-gray-700">年齡</label><input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
@@ -329,40 +312,40 @@
 
             <div id="trends-tab" class="hidden space-y-4">
                  <div class="bg-white p-4 rounded-lg shadow">
-                          <div class="flex flex-col items-center gap-2 mb-4">
-                               <div class="flex justify-center flex-wrap gap-2">
-                                   <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                                   <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
-                                   <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
-                               </div>
-                               <div class="flex items-center gap-1">
-                                   <label for="start-date-picker" class="text-xs">自訂開始日:</label>
-                                   <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                               </div>
-                          </div>
-                          <canvas id="trendsChart"></canvas>
-                          
-                          <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                               <p class="text-sm font-semibold text-center text-gray-700 mb-3">期間平均數據</p>
-                               <div id="averages-display" class="grid grid-cols-2 gap-3 text-center">
-                                   <div class="bg-white p-2 rounded-md shadow-sm">
-                                       <p class="text-xs text-gray-500">平均體重</p>
-                                       <p id="avg-weight" class="text-lg font-bold text-emerald-600">N/A</p>
-                                   </div>
-                                   <div class="bg-white p-2 rounded-md shadow-sm">
-                                       <p class="text-xs text-gray-500">日均熱量</p>
-                                       <p id="avg-calories" class="text-lg font-bold text-red-500">N/A</p>
-                                   </div>
-                                   <div class="bg-white p-2 rounded-md shadow-sm">
-                                       <p class="text-xs text-gray-500">日均飲水</p>
-                                       <p id="avg-water" class="text-lg font-bold text-blue-500">N/A</p>
-                                   </div>
-                                   <div class="bg-white p-2 rounded-md shadow-sm">
-                                       <p class="text-xs text-gray-500">日均膠囊</p>
-                                       <p id="avg-capsule" class="text-lg font-bold text-orange-500">N/A</p>
-                                   </div>
-                               </div>
-                          </div>
+                         <div class="flex flex-col items-center gap-2 mb-4">
+                             <div class="flex justify-center flex-wrap gap-2">
+                                 <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                                 <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
+                                 <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
+                             </div>
+                             <div class="flex items-center gap-1">
+                                 <label for="start-date-picker" class="text-xs">自訂開始日:</label>
+                                 <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                             </div>
+                         </div>
+                         <canvas id="trendsChart"></canvas>
+                         
+                         <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                             <p class="text-sm font-semibold text-center text-gray-700 mb-3">期間平均數據</p>
+                             <div id="averages-display" class="grid grid-cols-2 gap-3 text-center">
+                                 <div class="bg-white p-2 rounded-md shadow-sm">
+                                     <p class="text-xs text-gray-500">平均體重</p>
+                                     <p id="avg-weight" class="text-lg font-bold text-emerald-600">N/A</p>
+                                 </div>
+                                 <div class="bg-white p-2 rounded-md shadow-sm">
+                                     <p class="text-xs text-gray-500">日均熱量</p>
+                                     <p id="avg-calories" class="text-lg font-bold text-red-500">N/A</p>
+                                 </div>
+                                 <div class="bg-white p-2 rounded-md shadow-sm">
+                                     <p class="text-xs text-gray-500">日均飲水</p>
+                                     <p id="avg-water" class="text-lg font-bold text-blue-500">N/A</p>
+                                 </div>
+                                 <div class="bg-white p-2 rounded-md shadow-sm">
+                                     <p class="text-xs text-gray-500">日均膠囊</p>
+                                     <p id="avg-capsule" class="text-lg font-bold text-orange-500">N/A</p>
+                                 </div>
+                             </div>
+                         </div>
 
                          <div class="flex justify-center gap-4 mt-4">
                              <button id="show-all-btn" class="text-xs text-blue-600 hover:underline">全部顯示</button>
@@ -376,7 +359,7 @@
                                  <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
                                  <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="4" checked> 燃脂膠囊</label>
                          </div>
-                   </div>
+                 </div>
             </div>
         </div>
     </div>
