@@ -1,4 +1,4 @@
-# --- Start of final app.py code ---
+# --- Start of final app.py code (v3) ---
 
 import os
 from flask import Flask, request, abort, render_template, jsonify
@@ -13,8 +13,8 @@ import base64
 import requests
 import redis # 導入 redis 庫
 import json # 導入 json 庫用於序列化數據
-import database # [新增] 導入我們自己寫的 database 模組
-from threading import Timer # [新增] 導入 Timer 用於計時
+import database # 導入我們自己寫的 database 模組
+from threading import Timer # 導入 Timer 用於計時
 
 app = Flask(__name__)
 
@@ -22,14 +22,13 @@ app = Flask(__name__)
 line_channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 openai_api_key = os.getenv("OPENAI_API_KEY")
-redis_url = os.getenv("REDIS_URL") # 新增 Redis URL 環境變數
-database_url = os.getenv("DATABASE_URL") # [新增]
+redis_url = os.getenv("REDIS_URL")
+database_url = os.getenv("DATABASE_URL")
 
-# [修改] 訊息捆綁與記憶相關常數
-MESSAGE_BUNDLE_DELAY = 10.0  # 訊息捆綁處理的等待時間 (秒)
-CONVERSATION_MEMORY_SECONDS = 86400  # [新功能] 24 小時的對話記憶
-KEY_MESSAGE_BUNDLE = "message_bundle:{user_id}" # [新功能] Redis Key 範本
-KEY_CONVERSATION_HISTORY = "conversation_history:{user_id}" # [新功能] Redis Key 範本
+MESSAGE_BUNDLE_DELAY = 10.0
+CONVERSATION_MEMORY_SECONDS = 86400
+KEY_MESSAGE_BUNDLE = "message_bundle:{user_id}"
+KEY_CONVERSATION_HISTORY = "conversation_history:{user_id}"
 
 
 # --- 初始化 ---
@@ -39,7 +38,6 @@ print(f"DEBUG: OPENAI_API_KEY loaded: {'Yes' if openai_api_key else 'No'}")
 print(f"DEBUG: REDIS_URL loaded: {'Yes' if redis_url else 'No'}")
 print(f"DEBUG: DATABASE_URL loaded: {'Yes' if database_url else 'No'}")
 
-# [修改] 簡化初始化流程，使用 try/except 處理缺少環境變數的情況
 try:
     if not (line_channel_access_token and line_channel_secret):
         raise ValueError("LINE Bot credentials missing")
@@ -70,7 +68,7 @@ except Exception as e:
     print(f"ERROR: Failed to connect to Redis: {e}")
     r = None
 
-user_message_timers = {} # 用於存放每個用戶的 Timer 物件
+user_message_timers = {}
 
 
 # --- 路由 ---
@@ -139,7 +137,6 @@ def load_log_route():
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 # [新功能] 建立一個統一的發送函式，以應對 reply_token 可能失效的問題
 def send_final_message(user_id, reply_token, message_objects):
     try:
@@ -157,7 +154,7 @@ def send_final_message(user_id, reply_token, message_objects):
         print(f"ERROR: An unexpected error occurred in send_final_message for user {user_id}: {e}")
         traceback.print_exc()
 
-# [修改] 全面重寫 process_message_bundle 函式，實現最終版的「高 EQ 陪伴教練」混合策略
+# [修改] 徹底移除分流邏輯，統一由 GPT-4o 處理所有訊息
 def process_message_bundle(user_id, reply_token):
     print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting bundle processing.")
     
@@ -165,7 +162,7 @@ def process_message_bundle(user_id, reply_token):
         print("ERROR: Redis, OpenAI client, or Line Bot API is not available.")
         return
 
-    # 1. 資料大集合：從 Redis 撈取捆綁包和歷史紀錄
+    # 1. 資料大集合
     bundle_key = KEY_MESSAGE_BUNDLE.format(user_id=user_id)
     history_key = KEY_CONVERSATION_HISTORY.format(user_id=user_id)
     
@@ -185,9 +182,8 @@ def process_message_bundle(user_id, reply_token):
         traceback.print_exc()
         return
 
-    # 2. 智慧分流判斷 & 準備當前訊息
+    # 2. 準備當前訊息
     has_image = any(msg['type'] == 'image' for msg in message_bundle)
-    
     current_user_content = []
     user_text_parts = []
 
@@ -208,37 +204,13 @@ def process_message_bundle(user_id, reply_token):
         current_input_for_history = combined_text
 
     try:
-        reply_text = ""
-        system_prompt = ""
-        messages_to_openai = []
+        # [刪除] 徹底移除分流邏輯，不再需要 classification_prompt 和 gpt-3.5 呼叫
         
-        # --- 路線二：只有純文字，先進行分類 (保留 emoji 測試機制) ---
-        if not has_image:
-            print(f"DEBUG: User {user_id} is text-only. Using classification mode.")
-            classification_prompt = """你是一個訊息分類器。請根據用戶的文字內容，判斷訊息屬於以下哪一種類型：
-- 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。
-- 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是想與人聊天的內容。
-- 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
-只回覆分類名稱，不要有其他文字。"""
-            
-            judgment_response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "system", "content": classification_prompt}, {"role": "user", "content": combined_text}], temperature=0)
-            judgment_category = judgment_response.choices[0].message.content.strip()
-            print(f"DEBUG: Text-only classification result: '{judgment_category}'")
-
-            if judgment_category == '無關':
-                positive_emojis = ["😍"]
-                reply_text = random.choice(positive_emojis)
-                send_final_message(user_id, reply_token, TextSendMessage(text=reply_text))
-                return # 結束函式，不記錄到歷史
-        
-        # --- 路線一 & 有意義的純文字：啟用「全能陪伴教練」 ---
-        print(f"DEBUG: User {user_id} entering 'Companion Coach' main logic.")
-        
-        # [修改] 植入整合所有討論結果的最終版「超級指令」
+        # [修改] 統一使用最終版的「超級指令」
         system_prompt = """# 核心身份與使命
 你是一位頂尖的營養師助理，同時也是一位高 EQ、帶有幽默感和同理心的減重夥伴。
 **你的回覆對象是正在參加減重課程的付費學員。**
-因此，你所有的分析和建議，都必須以**『幫助學員成功減重』**為最高指導原則。你的目標是提供有價值的、可執行的建議，而不僅僅是數據。
+因此，你所有的分析和建議與回覆，都必須以**『幫助學員成功減重』**為最高指導原則。你的目標是提供有價值的、可執行的建議，而不僅僅是數據。
 
 # 主要任務：綜合處理使用者輸入
 你的任務是處理使用者傳來的所有內容（圖片和文字）。請按照以下**優先級順序**來理解和回應：
@@ -273,10 +245,12 @@ def process_message_bundle(user_id, reply_token):
 3. **核心主軸3 - 引導下一步**：鼓勵使用者若有相關資訊，可以提供給你。
 """
         
+        # 組合 OpenAI 的 messages
+        messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history
         if has_image:
-            messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": current_user_content}]
-        else: # 對於有意義的純文字
-            messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": combined_text}]
+            messages_to_openai.append({"role": "user", "content": current_user_content})
+        else:
+            messages_to_openai.append({"role": "user", "content": combined_text})
         
         response = client.chat.completions.create(model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=1024)
         reply_text = response.choices[0].message.content.strip()
