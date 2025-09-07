@@ -12,6 +12,7 @@ import requests
 import redis # 導入 redis 庫
 import json # 導入 json 庫用於序列化數據
 import database # [新增] 導入我們自己寫的 database 模組
+from threading import Timer # [新增] 導入 Timer 用於計時
 
 app = Flask(__name__)
 
@@ -21,6 +22,9 @@ line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 redis_url = os.getenv("REDIS_URL") # 新增 Redis URL 環境變數
 database_url = os.getenv("DATABASE_URL") # [新增]
+
+# [新增] 訊息捆綁處理的等待時間 (秒)
+MESSAGE_BUNDLE_DELAY = 10.0
 
 # DEBUG: 檢查環境變數是否正確讀取
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN loaded: {'Yes' if line_channel_access_token else 'No'}")
@@ -65,6 +69,9 @@ if redis_url:
 else:
     print("WARNING: REDIS_URL is not set. Session management will not be persistent.")
 
+# --- [新增] 用戶訊息暫存機制與計時器管理 ---
+user_message_timers = {} # 用於存放每個用戶的 Timer 物件
+
 # 健康檢查用
 @app.route("/", methods=['GET'])
 def home():
@@ -99,7 +106,7 @@ def callback():
 
     return "OK"
 
-# --- [新增] LIFF 頁面與 API 路由 ---
+# --- [舊有] LIFF 頁面與 API 路由 (此區塊保持不變) ---
 
 @app.route("/liff")
 def liff_page():
@@ -139,290 +146,241 @@ def load_log_route():
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- 共用的回覆邏輯 (延遲和分段) ---
-def send_delayed_response(event, reply_text):
-    messages_to_send = []
+# --- [刪除] 舊的 send_delayed_response 函式 ---
+# 舊的 send_delayed_response 函式已完全刪除，其功能被新的 process_message_bundle 取代。
+
+# --- [新增] 訊息捆綁處理與回覆函式 ---
+def process_message_bundle(user_id, reply_token):
+    print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting to process message bundle.")
     
-    # 計算延遲時間 (已根據您的新要求調整)
-    reply_length = len(reply_text)
-    delay_seconds = 0
-    if reply_length <= 30:
-        delay_seconds = random.uniform(3, 5) # 30字內：3-5秒
-    elif 30 < reply_length <= 60:
-        delay_seconds = random.uniform(5, 7) # 31-60字：5-7秒
-    elif 60 < reply_length <= 100:
-        delay_seconds = random.uniform(7, 9) # 61-100字：7-9秒
-    else: # 超過100字，使用基於100字的延遲再加上額外時間，但不超過30秒
-        delay_seconds = random.uniform(7, 9) + ((reply_length - 100) / 50) * random.uniform(1, 2)
-        delay_seconds = min(delay_seconds, 30) # 確保延遲不超過30秒
+    # 1. 從 Redis 撈取該用戶的所有訊息
+    redis_key = f"message_bundle:{user_id}"
+    try:
+        messages_str = r.get(redis_key)
+        if not messages_str:
+            print(f"WARNING: No message bundle found in Redis for user {user_id}. Aborting.")
+            return
+        
+        # 將 JSON 字符串反序列化為 Python 列表
+        message_bundle = json.loads(messages_str)
+        print(f"DEBUG: Retrieved message bundle for user {user_id}: {len(message_bundle)} items.")
+        
+        # 處理完畢後，立即從 Redis 刪除，避免重複處理
+        r.delete(redis_key)
+        print(f"DEBUG: Deleted message bundle from Redis for user {user_id}.")
 
-    print(f"DEBUG: Calculated initial reply delay: {delay_seconds:.2f} seconds for {reply_length} characters.")
-    time.sleep(delay_seconds) # 執行延遲
+    except Exception as e:
+        print(f"ERROR: Failed to retrieve or delete message bundle from Redis for user {user_id}: {e}")
+        traceback.print_exc()
+        return
 
-    # --- START MODIFICATION: 刪除訊息分段邏輯 ---
-    # messages_to_send 將只包含一條完整的訊息
-    messages_to_send.append(TextSendMessage(text=reply_text.strip()))
-    # --- END MODIFICATION ---
+    # 2. 智慧整理訊息，建構 OpenAI 的請求
+    # 預設回覆
+    reply_text = "目前無法回覆，請稍後再試 🧘"
 
-    # 新增 debug log 來驗證 messages_to_send 的內容和長度
-    print(f"DEBUG: Preparing to send {len(messages_to_send)} messages.")
-    if messages_to_send:
-        print(f"DEBUG: First message text content: {messages_to_send[0].text[:50]}...") # 只印前50字
-    else:
-        print("DEBUG: messages_to_send is empty!")
+    if not client:
+        print("ERROR: OpenAI client is not initialized. Cannot call GPT.")
+        # 直接回覆錯誤訊息，不再需要舊的延遲函式
+        line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text))
+        return
 
-    # 發送回覆
+    # 準備給 OpenAI 的內容列表
+    openai_content = []
+    user_text_parts = []
+    
+    # 分離文字和圖片
+    for msg in message_bundle:
+        if msg['type'] == 'text':
+            user_text_parts.append(msg['content'])
+        elif msg['type'] == 'image':
+            # 將圖片加入 content 列表
+            openai_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{msg['content']}"
+                }
+            })
+    
+    # 將所有文字訊息合併成一個字串
+    combined_text = "\n".join(user_text_parts)
+    # 將合併後的文字加入 content 列表的最前面
+    openai_content.insert(0, {"type": "text", "text": combined_text})
+    
+    # 3. 呼叫 OpenAI 進行分析 (將所有之前的 Prompt 邏輯整合於此)
+    try:
+        # --- 判斷意圖 ---
+        print(f"DEBUG: Stage 1 (Bundle): Classifying combined text '{combined_text[:50]}...' intent.")
+        judgment_response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": """你是一個訊息分類器。請根據用戶的文字內容（忽略圖片），判斷訊息屬於以下哪一種類型：
+- 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。也包含對圖片的分析請求。
+- 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是與營養健康主題無關但仍想與人聊天的內容。
+- 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
+
+只回覆分類名稱，不要有其他文字。
+"""},
+                {"role": "user", "content": combined_text or "（使用者只傳送了圖片）"}
+            ],
+            temperature=0
+        )
+        judgment_category = judgment_response.choices[0].message.content.strip()
+        print(f"DEBUG: Judgment result: '{judgment_category}'")
+
+        # --- 根據意圖選擇對應的 System Prompt ---
+        system_prompt_content = ""
+        has_image = any(msg['type'] == 'image' for msg in message_bundle)
+
+        if has_image:
+             # 如果有圖片，無論文字是什麼，都優先使用營養分析 Prompt
+            print("DEBUG: Bundle contains image. Using vision analysis prompt.")
+            system_prompt_content = """
+你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分，並能結合使用者的文字問題進行綜合回覆。
+
+1.  **分析圖片：**
+    -   請根據**台灣的飲食指南**，將圖片中所有食物歸類到「六大類食物」。
+    -   估計每種食物的**份量**（用拳頭、掌心等日常比喻）與**熱量**。
+    -   計算整份餐點的**總熱量**。
+
+2.  **結合文字回答：**
+    -   閱讀使用者的文字問題，理解他的情境或額外需求。
+    -   將圖片分析結果，融入到對他問題的回覆中。例如，如果他問「運動完吃這個好嗎？」，你應該結合餐點的蛋白質和碳水化合物含量來回答。
+
+3.  **回覆格式：**
+    -   **若使用者只想分析熱量**，請遵循「先總結總熱量，後條列細項」的格式。
+    -   **若使用者有其他問題**，請自然地將營養分析融入回答，不需死板地條列。
+    -   語氣口語化、簡潔自然。
+    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語。**
+"""
+        elif judgment_category == '營養/健康相關':
+            print("DEBUG: Bundle is nutrition related (text only).")
+            system_prompt_content = """
+你是一位友善、專業的營養師助理。
+請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
+**非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語。**
+在回答時，提供專業的營養知識，避免生硬的專業術語。
+**在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等）。**
+"""
+        elif judgment_category == '情緒/閒聊/非營養提問':
+            print("DEBUG: Bundle is emotional/chat (text only).")
+            system_prompt_content = """
+你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
+用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
+保持同理心和鼓勵的語氣。
+**非常重要：回覆務必極其簡潔（目標在20-40字内完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語。**
+"""
+        elif judgment_category == '無關':
+            print(f"DEBUG: Bundle is NOT nutrition related. Replying with emoji.")
+            positive_emojis = ["😍"]
+            reply_text_emoji = random.choice(positive_emojis)
+            line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text_emoji))
+            return
+        
+        else: # 處理未知的分類結果
+            print(f"WARNING: Unexpected judgment category: '{judgment_category}'. Falling back to generic reply.")
+            reply_text = "抱歉，我還不太明白您的意思，您可以再說清楚一點嗎？"
+            line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text))
+            return
+
+        # --- 執行最終的 OpenAI API 呼叫 ---
+        print("DEBUG: Calling final OpenAI API with bundled content.")
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt_content},
+                {"role": "user", "content": openai_content}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        reply_text = response.choices[0].message.content.strip()
+
+    except AuthenticationError as e:
+        print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
+        reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
+        traceback.print_exc()
+    except (APIStatusError, APIConnectionError) as e:
+        print(f"ERROR: OpenAI API Status/Connection Error: {e}. An issue occurred with OpenAI's servers or network.")
+        reply_text = "GPT 服務暫時不穩定，請稍後再試。🌐"
+        traceback.print_exc()
+    except Exception as e:
+        print(f"ERROR: ❌ An unexpected error occurred during GPT bundle call: {e}.")
+        traceback.print_exc()
+        # 使用預設錯誤訊息
+        
+    # 4. 發送最終回覆 (直接發送，無延遲)
     try:
         if line_bot_api is None:
             print("ERROR: line_bot_api is not initialized. Cannot reply.")
             return
-
-        print(f"DEBUG: Final reply messages to send: {len(messages_to_send)} messages for reply token: {event.reply_token}.")
+        
+        print(f"DEBUG: Sending final bundled reply to user {user_id}: '{reply_text[:50]}...'")
         line_bot_api.reply_message(
-            event.reply_token,
-            messages_to_send
+            reply_token,
+            TextSendMessage(text=reply_text.strip())
         )
-        print("DEBUG: Reply sent successfully to LINE.")
+        print("DEBUG: Bundled reply sent successfully to LINE.")
     except Exception as e:
-        print(f"ERROR: Failed to reply to LINE user: {e}.")
+        print(f"ERROR: Failed to send bundled reply to LINE user {user_id}: {e}.")
         traceback.print_exc()
 
 
-# --- 處理文字訊息 ---
+# --- [修改] 處理文字訊息 ---
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id # 獲取用戶 ID
     user_input = event.message.text
     print(f"DEBUG: 🧾 Received text message from user {user_id}: '{user_input}'")
 
-    # 預設回覆，以防任何錯誤
-    reply_text = "目前無法回覆，請稍後再試 🧘" 
-
-    if not client:
-        print("ERROR: OpenAI client is not initialized. Cannot call GPT.")
-        send_delayed_response(event, reply_text)
+    if not r:
+        print("ERROR: Redis is not available. The new message bundling logic cannot proceed.")
+        # 可以選擇回覆一個錯誤訊息，或者直接忽略
         return
 
-    # 檢查是否有待處理的圖片 (來自 Redis)
-    pending_image_data_str = None
-    if r:
-        try:
-            pending_image_data_str = r.get(f"pending_image:{user_id}")
-            print(f"DEBUG: Checking Redis for pending image for user {user_id}: {pending_image_data_str is not None}")
-        except Exception as redis_e:
-            print(f"ERROR: Failed to get pending image from Redis for user {user_id}: {redis_e}")
-            traceback.print_exc()
-            # 如果 Redis 錯誤，當作沒有待處理圖片
-            pending_image_data_str = None
-            
-    if pending_image_data_str:
-        # 用戶發送了文字，且有待處理圖片
-        # 判斷用戶是否在詢問圖片相關內容，例如熱量
-        print(f"DEBUG: User {user_id} has a pending image. Checking text intent for image.")
-        
-        # 定義觸發圖片分析的關鍵字
-        image_analysis_keywords = ["熱量", "卡路里", "算", "估", "分析", "看", "這是什麼", "照片", "圖"]
-        
-        # 判斷用戶文字是否包含圖片分析意圖
-        is_image_analysis_intent = False
-        if any(keyword in user_input for keyword in image_analysis_keywords):
-            is_image_analysis_intent = True
-        
-        if is_image_analysis_intent:
-            print(f"DEBUG: User {user_id} intends to analyze pending image.")
-            # 清除待處理圖片標記，避免重複處理
-            if r:
-                try:
-                    r.delete(f"pending_image:{user_id}")
-                    print(f"DEBUG: Pending image deleted from Redis for user {user_id}.")
-                except Exception as redis_e:
-                    print(f"ERROR: Failed to delete pending image from Redis for user {user_id}: {redis_e}")
-                    traceback.print_exc()
-
-            try:
-                pending_image_data = json.loads(pending_image_data_str)
-                base64_image = pending_image_data['base64_image']
-                
-                # --- START MODIFICATION FOR TEXT HANDLER'S VISION PROMPT ---
-                print("DEBUG: Calling GPT-4o for image analysis from text handler...")
-                vision_system_prompt_for_text_handler = """
-                你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
-                請根據圖片中的食物，提供以下詳細的營養分析：
-
-                1.  **分項營養素與份量估計：**
-                    -   請列出圖片中所有可識別的食物項目。
-                    -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
-                    -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
-                    -   估計每種食物所提供的**熱量 (卡路里)**。
-
-                2.  **總熱量加總：**
-                    -   計算並提供這份餐點的**總熱量粗估值**。
-
-                3.  **整體回覆格式：**
-                    -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
-                    -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
-                    -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
-                    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
-                """
-                vision_response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": vision_system_prompt_for_text_handler},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                            ]
-                        }
-                    ],
-                    max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
-                    temperature=0.7 
-                )
-                # --- END MODIFICATION FOR TEXT HANDLER'S VISION PROMPT ---
-                reply_text = vision_response.choices[0].message.content.strip()
-                send_delayed_response(event, reply_text)
-
-            except AuthenticationError as e:
-                print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
-                reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
-                traceback.print_exc()
-                send_delayed_response(event, reply_text)
-            except (APIStatusError, APIConnectionError) as e:
-                print(f"ERROR: OpenAI API Status/Connection Error for Vision: {e}. An issue occurred with OpenAI's servers or network.")
-                reply_text = "圖片分析服務暫時不穩定，請稍後再試。🌐"
-                traceback.print_exc()
-                send_delayed_response(event, reply_text)
-            except Exception as e:
-                print(f"ERROR: ❌ An unexpected error occurred during GPT Vision call: {e}.")
-                traceback.print_exc()
-                reply_text = "抱歉，分析圖片時遇到問題，請稍後再試。😢"
-                send_delayed_response(event, reply_text)
-            
-            return # 處理完圖片相關請求後就返回
-
-        else: # 有待處理圖片，但用戶文字與圖片分析無關
-            print(f"DEBUG: User {user_id} has pending image, but text is not about image analysis. Replying with reminder.")
-            # 調整語氣，更自然、不那麼「巴結」
-            reply_text = "😎"
-            send_delayed_response(event, reply_text)
-            return # 處理完提醒後就返回
-
-    # ----------------------------------------------------------------
-    # 如果沒有待處理圖片，或者文字與圖片無關，則執行文字處理邏輯
-    # ----------------------------------------------------------------
     try:
-        print(f"DEBUG: Stage 1 (Text): Classifying '{user_input}' intent.")
-        # 改變判斷器的提示詞，讓它回覆多種類型
-        judgment_response = client.chat.completions.create(
-            model="gpt-3.5-turbo", 
-            messages=[
-                {"role": "system", "content": """你是一個訊息分類器。請判斷用戶的訊息屬於以下哪一種類型：
-                - 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。
-                - 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是與營養健康主題無關但仍想與人聊天的內容。
-                - 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
+        # 1. 將訊息存入 Redis 的暫存列表
+        redis_key = f"message_bundle:{user_id}"
+        new_message = {"type": "text", "content": user_input}
+        
+        # 使用 Redis 的列表 (list) 來存放訊息會更直觀，但為了簡單起見，我們先用字串存 JSON
+        messages_str = r.get(redis_key)
+        if messages_str:
+            message_list = json.loads(messages_str)
+        else:
+            message_list = []
+        message_list.append(new_message)
+        
+        # 存回去，並設定過期時間 (例如 1 分鐘)，避免用戶不再發言導致資料殘留
+        r.set(redis_key, json.dumps(message_list), ex=60) 
+        print(f"DEBUG: Appended text message to bundle for user {user_id}.")
 
-                只回覆分類名稱，不要有其他文字。
-                """},
-                {"role": "user", "content": user_input}
-            ],
-            temperature=0 # 判斷時，溫度設為 0，確保最確定性的回覆
-        )
-        judgment_category = judgment_response.choices[0].message.content.strip()
-        print(f"DEBUG: Judgment result: '{judgment_category}'")
+        # 2. 重置該用戶的計時器
+        # 如果已有計時器，先取消它
+        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
+            user_message_timers[user_id].cancel()
+            print(f"DEBUG: Cancelled existing timer for user {user_id}.")
 
-        if judgment_category == '營養/健康相關':
-            print(f"DEBUG: Stage 2 (Text): Question is nutrition related. Generating detailed response for: '{user_input}'")
-            # 營養師主體回覆邏輯
-            system_prompt_content = """
-            你是一位友善、專業的營養師助理。
-            請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
-            **非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等，直接提供資訊即可。除非必要，否則不需要過度使用表情符號。**
-            在回答時，提供專業的營養知識，避免生硬的專業術語。
-            **在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「適量」。**
-            """
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt_content},
-                    {"role": "user", "content": user_input}
-                ],
-                temperature=0.7,
-                max_tokens=250 
-            )
-            print(f"DEBUG: 🎉 OpenAI GPT-4o API call successful. Full response: {response}")
-            reply_text = response.choices[0].message.content.strip()
-            print(f"DEBUG: Generated reply text: '{reply_text}'")
-            send_delayed_response(event, reply_text)
+        # 建立一個新的計時器
+        # 注意：reply_token 會在 Webhook 回應後失效，所以我們需要傳入最新的 reply_token
+        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
+        user_message_timers[user_id] = timer
+        timer.start()
+        print(f"DEBUG: Started new {MESSAGE_BUNDLE_DELAY}s timer for user {user_id}.")
 
-        elif judgment_category == '情緒/閒聊/非營養提問':
-            print(f"DEBUG: Stage 2 (Text): Question is emotional/chat. Generating sympathetic response for: '{user_input}'")
-            # 新增的情緒/閒聊回覆邏輯，強調簡潔
-            sympathy_prompt_content = """
-            你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
-            用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
-            保持同理心和鼓勵的語氣。如果語句內容隱含對減重或健康的沮喪，可以給予正向鼓勵。
-            **非常重要：回覆務必極其簡潔（目標在20-40字內完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。避免過度使用表情符號。**
-            """
-            sympathy_response = client.chat.completions.create(
-                model="gpt-4o", # 情感回覆也用4o，語氣會更自然
-                messages=[
-                    {"role": "system", "content": sympathy_prompt_content},
-                    {"role": "user", "content": user_input}
-                ],
-                temperature=0.7, # 稍微降低溫度，讓語氣更自然、內容更聚焦
-                max_tokens=100 # 這類回覆不需要太長
-            )
-            reply_text = sympathy_response.choices[0].message.content.strip()
-            print(f"DEBUG: Generated sympathetic reply text: '{reply_text}'")
-            send_delayed_response(event, reply_text)
-
-        elif judgment_category == '無關':
-            print(f"DEBUG: Stage 2 (Text): Question is NOT nutrition related. Replying with random positive emoji.")
-            # 真正無關的回覆邏輯，維持表情符號
-            positive_emojis = ["😍"]
-            reply_text_emoji = random.choice(positive_emojis)
-            try:
-                if line_bot_api is None:
-                    print("ERROR: line_bot_api is not initialized. Cannot reply with emoji.")
-                    return
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text_emoji))
-            except Exception as e:
-                print(f"ERROR: Failed to reply with emoji: {e}.")
-                traceback.print_exc()
-        else: # 處理未知的分類結果
-            print(f"WARNING: Unexpected judgment category: '{judgment_category}'. Falling back to generic reply.")
-            reply_text = "抱歉，我還不太明白您的意思，您可以再說清楚一點嗎？"
-            send_delayed_response(event, reply_text)
-
-    except AuthenticationError as e:
-        print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
-        reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
-        traceback.print_exc()
-        send_delayed_response(event, reply_text)
-    except (APIStatusError, APIConnectionError) as e:
-        print(f"ERROR: OpenAI API Status/Connection Error: {e}. An issue occurred with OpenAI's servers or network.")
-        reply_text = "GPT 服務暫時不穩定，請稍後再試。🌐"
-        traceback.print_exc()
-        send_delayed_response(event, reply_text)
     except Exception as e:
-        print(f"ERROR: ❌ An unexpected error occurred during GPT call: {e}.")
+        print(f"ERROR: An error occurred in handle_text_message for user {user_id}: {e}")
         traceback.print_exc()
-        reply_text = "目前無法回覆，請稍後再試 🧘"
-        send_delayed_response(event, reply_text)
 
-# --- 處理圖片訊息 ---
+# --- [修改] 處理圖片訊息 ---
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     user_id = event.source.user_id # 獲取用戶 ID
-    print(f"DEBUG: >>> Entering handle_image_message function. User ID: {user_id}")
+    print(f"DEBUG: 🖼️ Received image message from user {user_id}")
     
-    reply_text = "抱歉，圖片處理服務目前無法使用，請稍後再試。😅"
-
-    if not client:
-        print("ERROR: OpenAI client is not initialized. Cannot process image.")
-        send_delayed_response(event, reply_text)
+    if not r:
+        print("ERROR: Redis is not available. The new message bundling logic cannot proceed.")
         return
-
+        
     try:
         # 1. 獲取圖片內容並 Base64 編碼
         message_content = line_bot_api.get_message_content(event.message.id)
@@ -430,80 +388,38 @@ def handle_image_message(event):
         for chunk in message_content.iter_content():
             image_data += chunk
         base64_image = base64.b64encode(image_data).decode('utf-8')
-        print(f"DEBUG: Image received and Base64 encoded for user {user_id}. Size: {len(base64_image)} bytes.")
+        print(f"DEBUG: Image from user {user_id} Base64 encoded.")
 
-        # 2. 將圖片數據儲存到 Redis，並標記為待處理
-        if r:
-            # 儲存 Base64 編碼的圖片和相關信息
-            image_info = {"base64_image": base64_image}
-            # 設定 5 分鐘過期時間 (300 秒)，如果用戶超過 5 分鐘沒有提問就忘記這張圖
-            r.set(f"pending_image:{user_id}", json.dumps(image_info), ex=300) 
-            print(f"DEBUG: Pending image saved to Redis for user {user_id}. Expires in 300s.")
-            
-            # 簡化圖片上傳的初步回覆，更自然
-            initial_reply_text = "照片收到囉。請問有什麼想問的嗎？" # 移除表情符號，更簡潔
-            send_delayed_response(event, initial_reply_text)
-            return # 確保這裡有 return，避免後續代碼繼續執行
+        # 2. 將圖片數據存入 Redis 的暫存列表
+        redis_key = f"message_bundle:{user_id}"
+        new_message = {"type": "image", "content": base64_image}
 
+        messages_str = r.get(redis_key)
+        if messages_str:
+            message_list = json.loads(messages_str)
         else:
-            print(f"WARNING: Redis not initialized. Cannot save pending image for user {user_id}. Image will be processed immediately without pending logic.")
-            
-            # --- START MODIFICATION FOR IMAGE HANDLER'S VISION PROMPT ---
-            print("DEBUG: Calling GPT-4o for direct image analysis (Redis not available).")
-            vision_system_prompt_for_image_handler = """
-            你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
-            請根據圖片中的食物，提供以下詳細的營養分析：
+            message_list = []
+        message_list.append(new_message)
+        
+        r.set(redis_key, json.dumps(message_list), ex=60)
+        print(f"DEBUG: Appended image message to bundle for user {user_id}.")
 
-            1.  **分項營養素與份量估計：**
-                -   請列出圖片中所有可識別的食物項目。
-                -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
-                -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
-                -   估計每種食物所提供的**熱量 (卡路里)**。
+        # 3. 重置該用戶的計時器
+        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
+            user_message_timers[user_id].cancel()
+            print(f"DEBUG: Cancelled existing timer for user {user_id}.")
 
-            2.  **總熱量加總：**
-                -   計算並提供這份餐點的**總熱量粗估值**。
+        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
+        user_message_timers[user_id] = timer
+        timer.start()
+        print(f"DEBUG: Started new {MESSAGE_BUNDLE_DELAY}s timer for user {user_id}.")
+        
+        # [刪除] 不再需要立即回覆「照片收到囉」
 
-            3.  **整體回覆格式：**
-                -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
-                -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
-                -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
-                -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
-            """
-            vision_response = client.chat.completions.create(
-                model="gpt-4o", 
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": vision_system_prompt_for_image_handler},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
-                    }
-                ],
-                max_tokens=500, # 增加 max_tokens 以允許更詳細的回覆
-                temperature=0.7 
-            )
-            # --- END MODIFICATION FOR IMAGE HANDLER'S VISION PROMPT ---
-            reply_text = vision_response.choices[0].message.content.strip()
-            send_delayed_response(event, reply_text)
-            return # 處理完畢直接返回，因為沒有等待邏輯
-
-    except AuthenticationError as e:
-        print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
-        reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
-        traceback.print_exc()
-        send_delayed_response(event, reply_text)
-    except (APIStatusError, APIConnectionError) as e:
-        print(f"ERROR: OpenAI API Status/Connection Error for Vision: {e}. An issue occurred with OpenAI's servers or network.")
-        reply_text = "圖片分析服務暫時不穩定，請稍後再試。🌐"
-        traceback.print_exc()
-        send_delayed_response(event, reply_text)
     except Exception as e:
-        print(f"ERROR: ❌ An unexpected error occurred during image processing: {e}.")
+        print(f"ERROR: An error occurred in handle_image_message for user {user_id}: {e}")
         traceback.print_exc()
-        reply_text = "處理圖片時遇到問題，請稍後再試 🧘"
-        send_delayed_response(event, reply_text)
-    
+
 # 正確的 Render 啟動方式：讀取 port 並綁定 0.0.0.0
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
