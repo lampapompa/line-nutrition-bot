@@ -339,12 +339,34 @@ def process_message_bundle(user_id, reply_token):
         send_final_message(user_id, reply_token, TextSendMessage(text=error_message))
 
 
-# 處理文字訊息的函式
+# [修改] 處理文字訊息的函式
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id
     user_input = event.message.text
     print(f"DEBUG: 🧾 Received text message from user {user_id}: '{user_input}'")
+
+    # --- [這裡就是新增的指令判斷] ---
+    if user_input == "清除記憶體":
+        print(f"DEBUG: [Command] Received 'clear memory' command from user {user_id}.")
+        if r:
+            try:
+                history_key = KEY_CONVERSATION_HISTORY.format(user_id=user_id)
+                r.delete(history_key)
+                reply_text = "✅ 記憶已清除！"
+                print(f"DEBUG: [Command] Cleared conversation history for user {user_id}.")
+            except Exception as e:
+                reply_text = "❌ 清除記憶時發生錯誤。"
+                print(f"ERROR: [Command] Failed to clear memory for user {user_id}: {e}")
+        else:
+            reply_text = "❌ Redis 未連線，無法清除記憶。"
+            print("ERROR: [Command] Redis not connected, cannot clear memory.")
+        
+        # 直接回覆確認訊息，然後結束
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        return 
+    # --- [新增指令判斷結束] ---
+
 
     if not r:
         print("ERROR: Redis is not available.")
