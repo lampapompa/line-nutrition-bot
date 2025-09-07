@@ -1,4 +1,4 @@
-# --- Start of new app.py code ---
+# --- Start of final app.py code ---
 
 import os
 from flask import Flask, request, abort, render_template, jsonify
@@ -201,7 +201,6 @@ def process_message_bundle(user_id, reply_token):
             })
     
     combined_text = "\n".join(user_text_parts)
-    # 只有當有圖片時，才需要將文字和圖片內容放在同一個 content 列表中
     if has_image:
         current_user_content.insert(0, {"type": "text", "text": combined_text})
         current_input_for_history = current_user_content
@@ -214,37 +213,11 @@ def process_message_bundle(user_id, reply_token):
         system_prompt = ""
         messages_to_openai = []
         
-        if has_image:
-            # --- 路線一：有圖片，啟用「全能陪伴系教練」 ---
-            print(f"DEBUG: User {user_id} has images. Using 'Companion Coach' mode.")
-            system_prompt = """你是一位高 EQ、熱情帶有幽默感和同理心的頂尖營養師助理。你的溝通風格溫暖、專業且簡潔扼要。
-# 你的主要任務：
-針對使用者傳送的內容，辨識出所有「真實世界的食物或餐點」，並提供專業、詳細的營養與熱量分析。
-# 你的次要任務（非常重要）：
-如果內容中包含「非食物」的圖片或與營養無關的閒聊文字，你需要進行簡短的互動。請嚴格遵循以下的『通用互動指導原則』：
-1. **正面觀察原則**：簡短描述你看到的內容，並給予一個正面的、欣賞性的評價。
-2. **幽默自嘲原則**：如果遇到你不懂的專業領域（數學、科學等），就幽默地承認自己的極限，並與你的營養師身份做對比。
-3. **價值連結原則**：盡可能將互動與「好心情」、「動力」、「幸福感」等正面價值連結，輕輕點出這對健康生活和減重過程的重要性。
-4. **安全邊界原則**：
-    * 絕對避免對人物的「外貌、身材」做直接評論。應將評論的角度轉向「活力」、「開心的氛圍」等安全角度。
-    * 避免對爭議性話題發表評論。
-# 最終回覆格式（極度重要）：
-你的回覆必須是一氣呵成的單一訊息，並嚴格遵循此格式：
-1. 優先、完整地完成所有食物的分析。這是回覆的主體。
-2. 針對「每一項非食物內容」，只用「一句話」進行溫暖或幽默的互動。這部分必須非常簡潔，目的是禮貌地將話題推開，然後結束。
-## 情境二：內容中【完全沒有】可辨識的食物
-如果使用者傳來的內容（無論是圖片還是文字），你判斷**完全不含任何可分析的食物**，在這種情況下，你的目標是**禮貌地說明情況，並主動提供替代方案**，讓對話得以繼續。
-你的回覆應自然地包含以下**三個核心主軸**，但請用**你自己的、每次略有不同的口語化方式**來表達，**絕對不要使用一模一樣的罐頭訊息**：
-1. **核心主軸1 - 承認看不懂**：友善地表明你無法從中辨識出食物內容。
-2. **核心主軸2 - 表明能力範圍**：告訴使用者，你非常擅長分析「食品包裝」上的「營養成分」或「成分表」。
-3. **核心主軸3 - 引導下一步**：鼓勵使用者若有相關資訊，可以提供給你。
-"""
-            messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": current_user_content}]
-            
-            response = client.chat.completions.create(model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=800)
-            reply_text = response.choices[0].message.content.strip()
-
-        else: # --- 路線二：只有純文字，先進行分類 ---
+        # [修改] 徹底廢除舊的 if/elif 判斷，統一使用一個更強大的 system_prompt。
+        # 分流邏輯（emoji vs 智慧回覆）依然保留。
+        
+        # --- 路線二：只有純文字，先進行分類 ---
+        if not has_image:
             print(f"DEBUG: User {user_id} is text-only. Using classification mode.")
             classification_prompt = """你是一個訊息分類器。請根據用戶的文字內容，判斷訊息屬於以下哪一種類型：
 - 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。
@@ -261,14 +234,55 @@ def process_message_bundle(user_id, reply_token):
                 reply_text = random.choice(positive_emojis)
                 send_final_message(user_id, reply_token, TextSendMessage(text=reply_text))
                 return # 結束函式，不記錄到歷史
-            else:
-                system_prompt = """你是一位高 EQ、帶有幽默感和同理心的頂尖營養師助理。你的任務是回應使用者的提問或閒聊，並巧妙地連結回減重和健康生活的主軸，給予精神支持。回覆務必簡潔、溫暖。"""
-                messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": combined_text}]
+        
+        # --- 路線一 & 有意義的純文字：啟用「全能陪伴教練」 ---
+        print(f"DEBUG: User {user_id} entering 'Companion Coach' main logic.")
+        
+        # [新功能] 植入最終版的超級指令 (Super Prompt)
+        system_prompt = """# 核心身份與使命
+你是一位頂尖的營養師助理，同時也是一位高 EQ、帶有幽默感和同理心的減重夥伴。
+**你的回覆對象是正在參加減重課程的付費學員。**
+因此，你所有的分析和建議，都必須以**『幫助學員成功減重』**為最高指導原則。你的目標是提供有價值的、可執行的建議，而不僅僅是數據。
 
-                response = client.chat.completions.create(model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=500)
-                reply_text = response.choices[0].message.content.strip()
+# 主要任務：綜合處理使用者輸入
+你的任務是處理使用者傳來的所有內容（圖片和文字）。請按照以下**優先級順序**來理解和回應：
 
-        # 只要不是「無關」的純文字，就更新記憶
+## 優先級1：識別與處理【使用者修正】
+如果使用者的最新訊息是在**修正**你上一輪的回覆（例如：指正食物名稱、提供包裝上的確切熱量），你必須執行**『錯誤修正協定』**：
+1. **誠懇感謝與承認**：立刻感謝使用者的指正，並用輕鬆的語氣承認自己的估算有誤。
+2. **採納使用者數據**：明確表示將以**使用者提供的數據為準**。
+3. **基於新數據提供價值**：根據修正後的準確數據，重新提供有價值的分析或建議，並將其與減重目標連結。
+
+## 優先級2：分析與建議【食物內容】
+對於所有你能辨識為「食物」的內容，在提供營養和熱量分析的基礎上，你必須**主動**完成以下兩件事：
+1. **提出減重優化建議**：主動提出**具體的食物代換建議**（例如：建議將炸物換成烤物、精緻澱粉換成全穀雜糧、增加蔬菜份量等）。
+2. **解釋減重策略**：在建議中，要簡短說明**為什麼**要這樣代換，並扣回減重核心概念，例如：『...這樣可以**提高蛋白質與膳食纖維，增加飽足感**，讓您在減重期間比較不容易感到飢餓。』
+
+## 優先級3：互動與引導【非食物內容】
+對於所有非修正、非食物的內容（如寵物照、風景照、閒聊等），請遵循**『通用互動原則』**，用**一句話**進行簡短、溫暖或幽默的互動，然後自然地結束話題。
+
+# 最終回覆格式
+你的回覆必須是一氣呵成的單一訊息。
+- 如果是**修正回覆**，格式應為：【感謝與承認】->【基於新數據的分析與建議】。
+- 如果是**常規分析**，格式應為：【營養分析與減重建議】 -> 【--- 分隔線】 -> 【P.S. 溫馨互動】。
+- 所有互動都必須簡潔扼要。
+
+## 情境：內容中【完全沒有】可辨識的食物
+如果使用者傳來的內容，你判斷**完全不含任何可分析的食物**，你的目標是**禮貌地說明情況，並主動提供替代方案**，讓對話得以繼續。你的回覆應自然地包含以下**三個核心主軸**，但請用**你自己的、每次略有不同的口語化方式**來表達，**絕對不要使用一模一樣的罐頭訊息**：
+1. **核心主軸1 - 承認看不懂**：友善地表明你無法從中辨識出食物內容。
+2. **核心主軸2 - 表明能力範圍**：告訴使用者，你非常擅長分析「食品包裝」上的「營養成分」或「成分表」。
+3. **核心主軸3 - 引導下一步**：鼓勵使用者若有相關資訊，可以提供給你。
+"""
+        
+        if has_image:
+            messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": current_user_content}]
+        else: # 對於有意義的純文字
+            messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history + [{"role": "user", "content": combined_text}]
+        
+        response = client.chat.completions.create(model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=1024)
+        reply_text = response.choices[0].message.content.strip()
+
+        # 更新記憶
         r.rpush(history_key, json.dumps({"role": "user", "content": current_input_for_history}))
         r.rpush(history_key, json.dumps({"role": "assistant", "content": reply_text}))
         r.expire(history_key, CONVERSATION_MEMORY_SECONDS)
@@ -281,6 +295,7 @@ def process_message_bundle(user_id, reply_token):
         traceback.print_exc()
         error_message = "抱歉，我好像有點累了，請稍後再試一次喔！"
         send_final_message(user_id, reply_token, TextSendMessage(text=error_message))
+
 
 # [修改] 處理文字訊息的函式
 @handler.add(MessageEvent, message=TextMessage)
@@ -306,7 +321,6 @@ def handle_text_message(event):
         if user_id in user_message_timers and user_message_timers[user_id].is_alive():
             user_message_timers[user_id].cancel()
         
-        # [修改] 將最新的 reply_token 傳給計時器，以利 send_final_message 優先使用
         timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
         user_message_timers[user_id] = timer
         timer.start()
@@ -342,8 +356,7 @@ def handle_image_message(event):
 
         if user_id in user_message_timers and user_message_timers[user_id].is_alive():
             user_message_timers[user_id].cancel()
-
-        # [修改] 將最新的 reply_token 傳給計時器
+        
         timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
         user_message_timers[user_id] = timer
         timer.start()
@@ -359,4 +372,4 @@ if __name__ == "__main__":
     print(f"DEBUG: Starting Flask app on host 0.0.0.0, port {port}")
     app.run(host="0.0.0.0", port=port)
 
-# --- End of new app.py code ---
+# --- End of final app.py code ---
