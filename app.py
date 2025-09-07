@@ -207,16 +207,12 @@ def process_message_bundle(user_id, reply_token):
     else:
         current_input_for_history = combined_text
 
-
     try:
         reply_text = ""
         system_prompt = ""
         messages_to_openai = []
         
-        # [修改] 徹底廢除舊的 if/elif 判斷，統一使用一個更強大的 system_prompt。
-        # 分流邏輯（emoji vs 智慧回覆）依然保留。
-        
-        # --- 路線二：只有純文字，先進行分類 ---
+        # --- 路線二：只有純文字，先進行分類 (保留 emoji 測試機制) ---
         if not has_image:
             print(f"DEBUG: User {user_id} is text-only. Using classification mode.")
             classification_prompt = """你是一個訊息分類器。請根據用戶的文字內容，判斷訊息屬於以下哪一種類型：
@@ -238,7 +234,7 @@ def process_message_bundle(user_id, reply_token):
         # --- 路線一 & 有意義的純文字：啟用「全能陪伴教練」 ---
         print(f"DEBUG: User {user_id} entering 'Companion Coach' main logic.")
         
-        # [新功能] 植入最終版的超級指令 (Super Prompt)
+        # [修改] 植入整合所有討論結果的最終版「超級指令」
         system_prompt = """# 核心身份與使命
 你是一位頂尖的營養師助理，同時也是一位高 EQ、帶有幽默感和同理心的減重夥伴。
 **你的回覆對象是正在參加減重課程的付費學員。**
@@ -260,6 +256,9 @@ def process_message_bundle(user_id, reply_token):
 
 ## 優先級3：互動與引導【非食物內容】
 對於所有非修正、非食物的內容（如寵物照、風景照、閒聊等），請遵循**『通用互動原則』**，用**一句話**進行簡短、溫暖或幽默的互動，然後自然地結束話題。
+
+# 附加指令：上下文關聯
+當使用者在傳送了新的圖片或內容後，緊接著提出問題時，如果問題中使用了『這個』、『那張圖』、『它』等模糊的代名詞，你**必須優先**將其關聯到**本輪對話中最新收到的內容**進行回答。只有當使用者明確指出了編號或你之前給過的標籤（如『第一道菜』）時，才以該指定為準。
 
 # 最終回覆格式
 你的回覆必須是一氣呵成的單一訊息。
