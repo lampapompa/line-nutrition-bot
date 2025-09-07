@@ -205,9 +205,9 @@ def get_banner_info(user_profile):
                 days_remaining = delta.days
         
         if days_remaining is not None:
-             banner_info = { "text": f"會籍有效 (剩 {days_remaining} 天)", "color_class": "bg-green-200 text-green-800" }
+                banner_info = { "text": f"會籍有效 (剩 {days_remaining} 天)", "color_class": "bg-green-200 text-green-800" }
         else:
-             banner_info = { "text": "會籍有效", "color_class": "bg-green-200 text-green-800" }
+                banner_info = { "text": "會籍有效", "color_class": "bg-green-200 text-green-800" }
 
     elif status == "Trial":
         banner_info = { "text": "試用體驗中", "color_class": "bg-blue-200 text-blue-800" }
@@ -465,21 +465,45 @@ def get_trends():
     is_active, status = check_user_active(user_id)
     if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
 
-    range_param = request.args.get('range', '7days')
+    # ===== ▼▼▼ START: 此函式為本次唯一修改處 ▼▼▼ =====
+    
     today = datetime.now(TAIPEI_TZ).date()
-    end_date = today
-
-    if range_param == '14days':
-        start_date = today - timedelta(days=13)
-    elif range_param == '28days':
-        start_date = today - timedelta(days=27)
-    else:
+    
+    # 優先處理新的自訂起訖日期參數
+    start_date_str = request.args.get('startDate')
+    end_date_str = request.args.get('endDate')
+    
+    if start_date_str and end_date_str:
         try:
-            start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
-            potential_end_date = start_date + timedelta(days=27)
-            end_date = min(potential_end_date, today)
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            # 為避免惡意查詢過大範圍，可以加上一個範圍限制，例如最多查詢365天
+            if (end_date - start_date).days > 365:
+                 end_date = start_date + timedelta(days=365)
         except ValueError:
+            # 如果日期格式錯誤，就退回預設值 (最近7天)
             start_date = today - timedelta(days=6)
+            end_date = today
+    else:
+        # 如果沒有收到起訖日，則沿用舊的 range 邏輯 (向下相容)
+        range_param = request.args.get('range', '7days')
+        end_date = today
+
+        if range_param == '14days':
+            start_date = today - timedelta(days=13)
+        elif range_param == '28days':
+            start_date = today - timedelta(days=27)
+        else:
+            try:
+                # 處理單一日期或 'membership_period' 的情況
+                start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
+                potential_end_date = start_date + timedelta(days=27)
+                end_date = min(potential_end_date, today)
+            except ValueError:
+                # 預設為 '7days'
+                start_date = today - timedelta(days=6)
+    
+    # ===== ▲▲▲ END: 此函式為本次唯一修改處 ▲▲▲ =====
 
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
