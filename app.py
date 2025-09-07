@@ -1,427 +1,386 @@
+# --- Start of final app.py code (附有 image_count 邏輯的最終修正版) ---
+
 import os
 from flask import Flask, request, abort, render_template, jsonify
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
-from openai import OpenAI, APIStatusError, APIConnectionError, AuthenticationError
+from openai import OpenAI
 import traceback
-import time
-import random
 import base64
-import requests
-import redis # 導入 redis 庫
-import json # 導入 json 庫用於序列化數據
-import database # [新增] 導入我們自己寫的 database 模組
-from threading import Timer # [新增] 導入 Timer 用於計時
+import redis
+import json
+from threading import Timer
 
 app = Flask(__name__)
 
-# 環境變數：從 Render 或 .env 自動抓取
+# --- 環境變數與常數設定 ---
 line_channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
 openai_api_key = os.getenv("OPENAI_API_KEY")
-redis_url = os.getenv("REDIS_URL") # 新增 Redis URL 環境變數
-database_url = os.getenv("DATABASE_URL") # [新增]
+redis_url = os.getenv("REDIS_URL")
 
-# [新增] 訊息捆綁處理的等待時間 (秒)
 MESSAGE_BUNDLE_DELAY = 10.0
+CONVERSATION_MEMORY_SECONDS = 86400
+KEY_MESSAGE_BUNDLE = "message_bundle:{user_id}"
+KEY_CONVERSATION_HISTORY = "conversation_history:{user_id}"
 
-# DEBUG: 檢查環境變數是否正確讀取
+
+# --- [最終修正版] 提示詞拆分 ---
+PROMPT_IDENTITY = """# 你的身份：你是一位友善熱情且專業又有同理心，在**台灣台中**執業的專業營養師，專精於分析食物圖片的營養成分，你的所有回覆都必須使用**台灣在地口語**與**正體中文**。
+
+# 用詞規範：你必須嚴格遵守台灣的用詞習慣，絕對不可以使用中國大陸用語。舉例如下：
+  - **必須用**「鮪魚」，**不可以用**「金枪鱼」。
+  - **必須用**「馬鈴薯」，**不可以用**「土豆」。
+  - **必須用**「鳳梨」，**不可以用**「菠蘿」。
+# 【核心原則】專業範圍限制：
+你的專業**僅限於**飲食、營養分析與減重相關的建議。你**必須禮貌地拒絕**回答任何與此無關的請求，即便你知道答案。這包括但不限於：**解數學題、翻譯、寫詩、歷史問答、或提供非營養學的常識**。當遇到這類請求時，你應友善地說明你的專業是營養學，並引導使用者回到飲食討論上。
+"""
+
+PROMPT_TASK_SINGLE_IMAGE = """## 任務：分析單張食物圖片
+【你必須嚴格按照以下的範例和格式進行回覆，絕對不可偏離。】
+
+1.  **分項營養素與份量估計**：
+    * 請列出圖片中所有可識別的食物項目。
+    * 對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」。
+    * 估計每個食物的**份量**（用日常比喻），而不是模糊的詞。
+    * 估計每個食物所提供的**熱量 (卡)**。
+
+2.  **【回覆格式與範例】**：
+    * **第一段 (簡潔總結)**：直接給出總熱量。
+    * **第二段 (詳細說明)**：換行後，【必須使用以下條列式格式】，清楚列出所有食物項目。
+    * --- 範例 START ---
+    * 這份餐點大約450大卡。
+
+        - 烤雞腿 (豆魚蛋肉類): 約 250 大卡
+        - 白飯一碗 (全穀雜糧類): 約 200 大卡
+        - 燙花椰菜 (蔬菜類): 約 20 大卡 (熱量很低，主要是調味料)
+
+    **亮點與建議**：這餐的烤雞腿提供了很棒的優質蛋白質，有助於增加飽足感、維持肌肉量，非常棒喔！**減重期間**如果能將部分白飯換成糙米或地瓜，就能增加更多纖維質，讓血糖更穩定，對減重會更有幫助！
+    * --- 範例 END ---
+"""
+
+PROMPT_TASK_MULTI_IMAGE = """## 任務：分析多張食物圖片
+【你必須嚴格按照以下的範例和格式進行回覆，絕對不可偏離。】
+
+1.  **多圖處理原則**：
+    * 你必須**依序、獨立地**對每一張含有食物的圖片進行詳細的熱量拆解。
+    * 在回覆時，請用「**圖一：[餐點名稱]**」、「**圖二：[餐點名稱]**」的格式來清晰區分。
+    * 在全部分析完畢後，才計算**【本次紀錄總熱量】**，並針對**所有餐點的組合**給出整體的「亮點與建議」。
+
+2.  **【回覆格式與範例】**：
+    * --- 範例 START ---
+    * 這份餐點圖一加圖二大約620大卡。
+
+    * **圖一：烤雞腿便當**
+        - 烤雞腿 (豆魚蛋肉類): 約 250 大卡
+        - 白飯一碗 (全穀雜糧類): 約 200 大卡
+        - 燙花椰菜 (蔬菜類): 約 20 大卡
+
+    * **圖二：烤玉米**
+        - 烤玉米一支 (全穀雜糧類): 約 150 大卡
+
+    **亮點與建議**：這兩餐組合起來有優質的蛋白質和蔬菜，很不錯！玉米是好的澱粉來源，但**減重期間**如果跟便當的白飯搭配，澱粉量會稍微多一些，建議可以把其中一餐的澱粉減半，會更符合減重目標喔！
+    * --- 範例 END ---
+"""
+
+PROMPT_TASK_NON_FOOD = """## 備註任務：處理特殊內容
+1.  **處理非食物圖片**：如果你判斷**所有圖片**中都**完全沒有**可分析的食物（例如：風景、寵物、**螢幕截圖、文件、數學題**），請不要執行分析任務。你必須改為用輕鬆、口語化的方式，說明你沒有在照片中看到食物，並鼓勵學員傳送飲食照片給你分析。
+2.  **處理混合內容**：如果有多張圖片中，有部分不是食物，請正常分析食物圖片，並在回覆的最後用 P.S. 的方式輕鬆帶到非食物內容即可。例如：「P.S. 您家的貓咪好可愛喔！」。
+"""
+
+PROMPT_NUTRITION_TASK = """# 你的身份：你是一位在**台灣台中**執業的友善熱情、專業又有同理心的營養師。你的所有回覆都必須使用**台灣在地口語**與**正體中文**。
+
+# 用詞規範：你必須嚴格遵守台灣的用詞習慣，絕對不可以使用中國大陸用語。舉例如下：
+  - **必須用**「鮪魚」，**不可以用**「金枪鱼」。
+  - **必須用**「馬鈴薯」，**不可以用**「土豆」。
+  - **必須用**「鳳梨」，**不可以用**「菠蘿」。
+
+# 【核心任務與結尾格式】
+你的任務是以**減重期間**的考量出發，用 2-3 句話回答減重學員的文字問題，並帶給他們支持和動力。
+你的專業**僅限於**飲食、營養分析與減重相關的建議。你**必須禮貌地拒絕**回答任何與此無關的請求，即便你知道答案。這包括但不限於：**解數學題、翻譯、寫詩、歷史問答、或提供非營養學的常識**。
+
+# 回覆原則：
+1. **核心立場**：你所有的回答，都必須基於「正在幫助減重學員」這個前提。
+2. **風格與長度**：以口語化、自然的語氣進行回覆。**整體回覆必須控制在 2-3 句話內，簡潔有力。**
+3. **格式**：絕不使用任何開場白或結尾語。
+
+--- 範例 START ---
+[學員提問]：可以吃火鍋嗎？
+
+[你的回覆]：
+當然可以！**減重期間**吃火鍋只要多燙點蔬菜、少選加工料，就是很棒的減重餐喔。聰明吃比完全忌口更重要，一起加油！
+--- 範例 END ---
+
+--- 範例二 (非營養相關) START ---
+[學員提問]：可以幫我算數學嗎？
+
+[你的回覆]：
+哈囉，我的專業是營養學，數學可能就有點考倒我了！不過，如果您有任何關於飲食或營養的問題，我很樂意幫您解答喔！
+--- 範例二 END ---
+"""
+
+PROMPT_CHAT_TASK = """# 你的身份：你是一位在**台灣台中**執業的友善熱情、專業又有同理心的營養師。你的所有回覆都必須使用**台灣在地口語**與**正體中文**。
+
+# 核心任務：
+用戶正在表達**減重期間**情緒或分享日常，請給予**簡短且直接**的**減重期間**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
+**回覆務必極其簡潔（目標在20-40字內完成），直接回答核心情緒或內容，絕不說教或延伸話題。**
+**非常重要：絕不使用任何開場白或結尾語。**
+"""
+
+# --- (以下為不變的程式碼) ---
+
+# --- 初始化 ---
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN loaded: {'Yes' if line_channel_access_token else 'No'}")
 print(f"DEBUG: LINE_CHANNEL_SECRET loaded: {'Yes' if line_channel_secret else 'No'}")
 print(f"DEBUG: OPENAI_API_KEY loaded: {'Yes' if openai_api_key else 'No'}")
 print(f"DEBUG: REDIS_URL loaded: {'Yes' if redis_url else 'No'}")
-print(f"DEBUG: DATABASE_URL loaded: {'Yes' if database_url else 'No'}") # [新增]
 
-# 初始化 LineBotApi 和 WebhookHandler
-if line_channel_access_token and line_channel_secret:
+try:
+    if not (line_channel_access_token and line_channel_secret):
+        raise ValueError("LINE Bot credentials missing")
     line_bot_api = LineBotApi(line_channel_access_token)
     handler = WebhookHandler(line_channel_secret)
-else:
-    print("ERROR: LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is missing. Please set environment variables.")
-    line_bot_api = None # 確保未初始化
-    handler = None # 確保未初始化
+    print("DEBUG: Line Bot SDK initialized successfully.")
+except (ValueError, TypeError):
+    print("ERROR: LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET is missing.")
+    line_bot_api = None
+    handler = None
 
-# 初始化 OpenAI 客戶端
-client = None
-if openai_api_key:
+try:
+    if not openai_api_key:
+        raise ValueError("OpenAI API key missing")
+    client = OpenAI(api_key=openai_api_key)
+    print("DEBUG: OpenAI client initialized successfully.")
+except (ValueError, TypeError):
+    print("ERROR: OPENAI_API_KEY is missing.")
+    client = None
+
+try:
+    if not redis_url:
+        raise ValueError("Redis URL is not set")
+    r = redis.from_url(redis_url, decode_responses=True)
+    r.ping()
+    print("DEBUG: Redis client initialized and connected successfully.")
+except Exception as e:
+    print(f"ERROR: Failed to connect to Redis: {e}")
+    r = None
+
+user_message_timers = {}
+
+# --- 核心邏輯函式 ---
+def send_final_message(user_id, reply_token, message_objects):
     try:
-        client = OpenAI(api_key=openai_api_key)
-        print("DEBUG: OpenAI client initialized successfully.")
+        line_bot_api.reply_message(reply_token, message_objects)
+        print(f"DEBUG: Successfully replied to user {user_id} using reply_token.")
+    except LineBotApiError as e:
+        if "Invalid reply token" in str(e):
+            print(f"WARN: Reply token for user {user_id} expired. Falling back to push_message.")
+            line_bot_api.push_message(user_id, message_objects)
+            print(f"DEBUG: Successfully pushed message to user {user_id}.")
+        else:
+            print(f"ERROR: Failed to send message to user {user_id} due to a LineBotApiError: {e}")
     except Exception as e:
-        print(f"ERROR: Failed to initialize OpenAI client: {e}")
-        traceback.print_exc()
-        client = None
-else:
-    print("ERROR: OPENAI_API_KEY is missing. OpenAI related features will be disabled.")
+        print(f"ERROR: An unexpected error occurred in send_final_message for user {user_id}: {e}")
+
+def process_message_bundle(user_id, reply_token):
+    print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting bundle processing.")
     
-# 初始化 Redis 客戶端
-r = None
-if redis_url:
+    if not r or not client or not line_bot_api:
+        print("ERROR: Redis, OpenAI client, or Line Bot API is not available.")
+        return
+
+    bundle_key = KEY_MESSAGE_BUNDLE.format(user_id=user_id)
+    history_key = KEY_CONVERSATION_HISTORY.format(user_id=user_id)
+    
     try:
-        r = redis.from_url(redis_url, decode_responses=True) # decode_responses=True 自動解碼為字符串
-        # 嘗試 ping Redis 確保連線正常
-        r.ping()
-        print("DEBUG: Redis client initialized and connected successfully.")
+        messages_str = r.get(bundle_key)
+        message_bundle = json.loads(messages_str) if messages_str else []
+        if not message_bundle:
+            return
+        r.delete(bundle_key)
+        
+        history_list_json = r.lrange(history_key, 0, -1)
+        conversation_history = [json.loads(item) for item in history_list_json]
+        
     except Exception as e:
-        print(f"ERROR: Failed to initialize or connect to Redis client: {e}")
+        print(f"ERROR: Failed to retrieve data from Redis for user {user_id}: {e}")
+        return
+
+    # --- [核心修改] 程式碼路由邏輯 ---
+    images = [msg for msg in message_bundle if msg['type'] == 'image']
+    texts = [msg['content'] for msg in message_bundle if msg['type'] == 'text']
+    image_count = len(images)
+    combined_text = "\n".join(texts)
+
+    current_user_content = []
+    if combined_text:
+        current_user_content.append({"type": "text", "text": combined_text})
+    for img in images:
+        current_user_content.append({
+            "type": "image_url",
+            "image_url": { "url": f"data:image/jpeg;base64,{img['content']}", "detail": "high" }
+        })
+
+    if image_count > 0:
+        current_input_for_history = "[使用者傳送了圖片]\n" + combined_text
+    else:
+        current_input_for_history = combined_text
+
+    try:
+        system_prompt = None
+        
+        if image_count == 1:
+            print(f"DEBUG: [Router] Single image detected. Assigning Single Image Task.")
+            system_prompt = PROMPT_IDENTITY + PROMPT_TASK_SINGLE_IMAGE + PROMPT_TASK_NON_FOOD
+        elif image_count > 1:
+            print(f"DEBUG: [Router] Multiple images detected. Assigning Multi Image Task.")
+            system_prompt = PROMPT_IDENTITY + PROMPT_TASK_MULTI_IMAGE + PROMPT_TASK_NON_FOOD
+        else: # image_count == 0
+            print(f"DEBUG: [Router] Text only. Using classifier.")
+            classifier_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "判斷使用者訊息屬於『營養/健康相關』還是『情緒/閒聊』。只回覆分類名稱。"},
+                    {"role": "user", "content": combined_text or "（使用者沒有輸入文字）"}
+                ], temperature=0 )
+            intent = classifier_response.choices[0].message.content.strip()
+            print(f"DEBUG: [Classifier] Intent is '{intent}'")
+            if '營養/健康相關' in intent:
+                system_prompt = PROMPT_NUTRITION_TASK
+            else: 
+                system_prompt = PROMPT_CHAT_TASK
+        
+        messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history
+        messages_to_openai.append({"role": "user", "content": current_user_content})
+        
+        response = client.chat.completions.create( model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=1024 )
+        reply_text = response.choices[0].message.content.strip()
+
+        r.rpush(history_key, json.dumps({"role": "user", "content": current_input_for_history}))
+        r.rpush(history_key, json.dumps({"role": "assistant", "content": reply_text}))
+        r.expire(history_key, CONVERSATION_MEMORY_SECONDS)
+
+        send_final_message(user_id, reply_token, TextSendMessage(text=reply_text))
+        
+    except Exception as e:
+        print(f"ERROR: An error occurred during OpenAI call for user {user_id}: {e}")
         traceback.print_exc()
-else:
-    print("WARNING: REDIS_URL is not set. Session management will not be persistent.")
+        error_message = "抱歉，我好像有點累了，請稍後再試一次喔！"
+        send_final_message(user_id, reply_token, TextSendMessage(text=error_message))
 
-# --- [新增] 用戶訊息暫存機制與計時器管理 ---
-user_message_timers = {} # 用於存放每個用戶的 Timer 物件
-
-# 健康檢查用
+# --- Webhook 訊息處理 ---
 @app.route("/", methods=['GET'])
 def home():
-    print("DEBUG: Received GET / request (Health Check)")
     return "OK", 200
 
-# LINE Webhook 專用路徑
 @app.route("/callback", methods=['POST'])
 def callback():
+    if not handler: abort(500)
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
-
-    print(f"DEBUG: Received POST /callback request. Raw Body (first 200 chars): {body[:200]}...")
-    print(f"DEBUG: X-Line-Signature: {signature}")
-
-    if handler is None:
-        print("ERROR: LINE Bot Handler not initialized. Aborting 500.")
-        abort(500)
-
     try:
-        print("DEBUG: Attempting to handle webhook event with handler...")
         handler.handle(body, signature)
-        print("DEBUG: Webhook event handled successfully by handler.")
     except InvalidSignatureError:
-        print("ERROR: InvalidSignatureError - Signature verification failed. Check LINE Channel Secret in Render and LINE Developers.")
-        traceback.print_exc()
         abort(400)
     except Exception as e:
         print(f"CRITICAL ERROR: An unexpected error occurred during handler.handle: {e}")
         traceback.print_exc()
         abort(500)
+    return 'OK'
 
-    return "OK"
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text_message(event):
+    user_id = event.source.user_id
+    user_input = event.message.text
+    print(f"DEBUG: 🧾 Received text message from user {user_id}: '{user_input}'")
 
-# --- [舊有] LIFF 頁面與 API 路由 (此區塊保持不變) ---
+    if user_input == "清除記憶體":
+        print(f"DEBUG: [Command] Received 'clear memory' command from user {user_id}.")
+        if r:
+            try:
+                history_key = KEY_CONVERSATION_HISTORY.format(user_id=user_id)
+                r.delete(history_key)
+                reply_text = "✅ 記憶已清除！"
+            except Exception as e:
+                reply_text = f"❌ 清除記憶時發生錯誤: {e}"
+        else:
+            reply_text = "❌ Redis 未連線，無法清除記憶。"
+        
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        return 
 
+    if not r: return
+
+    try:
+        redis_key = KEY_MESSAGE_BUNDLE.format(user_id=user_id)
+        new_message = {"type": "text", "content": user_input}
+        
+        messages_str = r.get(redis_key)
+        message_list = json.loads(messages_str) if messages_str else []
+        message_list.append(new_message)
+        
+        r.set(redis_key, json.dumps(message_list), ex=120) 
+        
+        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
+            user_message_timers[user_id].cancel()
+        
+        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
+        user_message_timers[user_id] = timer
+        timer.start()
+    except Exception as e:
+        print(f"ERROR: An error occurred in handle_text_message for user {user_id}: {e}")
+
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    user_id = event.source.user_id
+    print(f"DEBUG: 🖼️ Received image message from user {user_id}")
+    
+    if not r or not line_bot_api: return
+        
+    try:
+        message_content = line_bot_api.get_message_content(event.message.id)
+        image_data = b''.join(message_content.iter_content())
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+
+        redis_key = KEY_MESSAGE_BUNDLE.format(user_id=user_id)
+        new_message = {"type": "image", "content": base64_image}
+
+        messages_str = r.get(redis_key)
+        message_list = json.loads(messages_str) if messages_str else []
+        message_list.append(new_message)
+        
+        r.set(redis_key, json.dumps(message_list), ex=120)
+
+        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
+            user_message_timers[user_id].cancel()
+        
+        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
+        user_message_timers[user_id] = timer
+        timer.start()
+    except Exception as e:
+        print(f"ERROR: An error occurred in handle_image_message for user {user_id}: {e}")
+        try:
+            error_message = "哎呀，我的眼睛好像有點花了，沒看清楚您的照片，可以再傳一次嗎？"
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=error_message))
+        except Exception as reply_e:
+            print(f"ERROR: Failed to even send the error reply: {reply_e}")
+
+
+# --- LIFF 頁面與 API 路由 (您可將 api_server.py 的路由貼於此處) ---
 @app.route("/liff")
 def liff_page():
-    # 它會去 templates 資料夾中，找出 liff.html 這個檔案並回傳
     return render_template('liff.html')
 
 @app.route('/admin')
 def admin_page():
     return render_template('admin.html')
 
-@app.route("/init-db")
-def init_database_route():
-    try:
-        database.init_db()
-        return "Database tables initialized successfully!"
-    except Exception as e:
-        traceback.print_exc()
-        return f"An error occurred during database initialization: {e}", 500
 
-@app.route("/api/save_log", methods=['POST'])
-def save_log_route():
-    try:
-        data = request.get_json()
-        database.save_user_log(data)
-        return jsonify({"status": "success"})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/api/load_log", methods=['GET'])
-def load_log_route():
-    try:
-        user_id = request.args.get('userId')
-        user_data = database.load_user_log(user_id)
-        return jsonify({"status": "success", "data": user_data})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-# --- [刪除] 舊的 send_delayed_response 函式 ---
-# 舊的 send_delayed_response 函式已完全刪除，其功能被新的 process_message_bundle 取代。
-
-# --- [新增] 訊息捆綁處理與回覆函式 ---
-def process_message_bundle(user_id, reply_token):
-    print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting to process message bundle.")
-    
-    # 1. 從 Redis 撈取該用戶的所有訊息
-    redis_key = f"message_bundle:{user_id}"
-    try:
-        messages_str = r.get(redis_key)
-        if not messages_str:
-            print(f"WARNING: No message bundle found in Redis for user {user_id}. Aborting.")
-            return
-        
-        # 將 JSON 字符串反序列化為 Python 列表
-        message_bundle = json.loads(messages_str)
-        print(f"DEBUG: Retrieved message bundle for user {user_id}: {len(message_bundle)} items.")
-        
-        # 處理完畢後，立即從 Redis 刪除，避免重複處理
-        r.delete(redis_key)
-        print(f"DEBUG: Deleted message bundle from Redis for user {user_id}.")
-
-    except Exception as e:
-        print(f"ERROR: Failed to retrieve or delete message bundle from Redis for user {user_id}: {e}")
-        traceback.print_exc()
-        return
-
-    # 2. 智慧整理訊息，建構 OpenAI 的請求
-    # 預設回覆
-    reply_text = "目前無法回覆，請稍後再試 🧘"
-
-    if not client:
-        print("ERROR: OpenAI client is not initialized. Cannot call GPT.")
-        # 直接回覆錯誤訊息，不再需要舊的延遲函式
-        line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text))
-        return
-
-    # 準備給 OpenAI 的內容列表
-    openai_content = []
-    user_text_parts = []
-    
-    # 分離文字和圖片
-    for msg in message_bundle:
-        if msg['type'] == 'text':
-            user_text_parts.append(msg['content'])
-        elif msg['type'] == 'image':
-            # 將圖片加入 content 列表
-            openai_content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{msg['content']}"
-                }
-            })
-    
-    # 將所有文字訊息合併成一個字串
-    combined_text = "\n".join(user_text_parts)
-    # 將合併後的文字加入 content 列表的最前面
-    openai_content.insert(0, {"type": "text", "text": combined_text})
-    
-    # 3. 呼叫 OpenAI 進行分析 (將所有之前的 Prompt 邏輯整合於此)
-    try:
-        # --- 判斷意圖 ---
-        print(f"DEBUG: Stage 1 (Bundle): Classifying combined text '{combined_text[:50]}...' intent.")
-        judgment_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": """你是一個訊息分類器。請根據用戶的文字內容（忽略圖片），判斷訊息屬於以下哪一種類型：
-- 『營養/健康相關』：直接提問營養、飲食、熱量、減重等事實性或建議性內容。也包含對圖片的分析請求。
-- 『情緒/閒聊/非營養提問』：表達情緒（如沮喪、開心）、分享生活日常，或是與營養健康主題無關但仍想與人聊天的內容。
-- 『無關』：與營養健康主題完全無關，也不是表達情緒或想聊天的內容（例如隨意打字、廣告）。
-
-只回覆分類名稱，不要有其他文字。
-"""},
-                {"role": "user", "content": combined_text or "（使用者只傳送了圖片）"}
-            ],
-            temperature=0
-        )
-        judgment_category = judgment_response.choices[0].message.content.strip()
-        print(f"DEBUG: Judgment result: '{judgment_category}'")
-
-        # --- 根據意圖選擇對應的 System Prompt ---
-        system_prompt_content = ""
-        has_image = any(msg['type'] == 'image' for msg in message_bundle)
-
-        if has_image:
-             # 如果有圖片，無論文字是什麼，都優先使用營養分析 Prompt
-            print("DEBUG: Bundle contains image. Using vision analysis prompt.")
-            system_prompt_content = """
-你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分，並能結合使用者的文字問題進行綜合回覆。
-
-1.  **分析圖片：**
-    -   請根據**台灣的飲食指南**，將圖片中所有食物歸類到「六大類食物」。
-    -   估計每種食物的**份量**（用拳頭、掌心等日常比喻）與**熱量**。
-    -   計算整份餐點的**總熱量**。
-
-2.  **結合文字回答：**
-    -   閱讀使用者的文字問題，理解他的情境或額外需求。
-    -   將圖片分析結果，融入到對他問題的回覆中。例如，如果他問「運動完吃這個好嗎？」，你應該結合餐點的蛋白質和碳水化合物含量來回答。
-
-3.  **回覆格式：**
-    -   **若使用者只想分析熱量**，請遵循「先總結總熱量，後條列細項」的格式。
-    -   **若使用者有其他問題**，請自然地將營養分析融入回答，不需死板地條列。
-    -   語氣口語化、簡潔自然。
-    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語。**
-"""
-        elif judgment_category == '營養/健康相關':
-            print("DEBUG: Bundle is nutrition related (text only).")
-            system_prompt_content = """
-你是一位友善、專業的營養師助理。
-請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
-**非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語。**
-在回答時，提供專業的營養知識，避免生硬的專業術語。
-**在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等）。**
-"""
-        elif judgment_category == '情緒/閒聊/非營養提問':
-            print("DEBUG: Bundle is emotional/chat (text only).")
-            system_prompt_content = """
-你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
-用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
-保持同理心和鼓勵的語氣。
-**非常重要：回覆務必極其簡潔（目標在20-40字内完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語。**
-"""
-        elif judgment_category == '無關':
-            print(f"DEBUG: Bundle is NOT nutrition related. Replying with emoji.")
-            positive_emojis = ["😍"]
-            reply_text_emoji = random.choice(positive_emojis)
-            line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text_emoji))
-            return
-        
-        else: # 處理未知的分類結果
-            print(f"WARNING: Unexpected judgment category: '{judgment_category}'. Falling back to generic reply.")
-            reply_text = "抱歉，我還不太明白您的意思，您可以再說清楚一點嗎？"
-            line_bot_api.reply_message(reply_token, TextSendMessage(text=reply_text))
-            return
-
-        # --- 執行最終的 OpenAI API 呼叫 ---
-        print("DEBUG: Calling final OpenAI API with bundled content.")
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_prompt_content},
-                {"role": "user", "content": openai_content}
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
-        reply_text = response.choices[0].message.content.strip()
-
-    except AuthenticationError as e:
-        print(f"ERROR: OpenAI Authentication Error: {e}. Check your API key and billing status.")
-        reply_text = "GPT 驗證失敗，請檢查 API 金鑰和帳戶。🔐"
-        traceback.print_exc()
-    except (APIStatusError, APIConnectionError) as e:
-        print(f"ERROR: OpenAI API Status/Connection Error: {e}. An issue occurred with OpenAI's servers or network.")
-        reply_text = "GPT 服務暫時不穩定，請稍後再試。🌐"
-        traceback.print_exc()
-    except Exception as e:
-        print(f"ERROR: ❌ An unexpected error occurred during GPT bundle call: {e}.")
-        traceback.print_exc()
-        # 使用預設錯誤訊息
-        
-    # 4. 發送最終回覆 (直接發送，無延遲)
-    try:
-        if line_bot_api is None:
-            print("ERROR: line_bot_api is not initialized. Cannot reply.")
-            return
-        
-        print(f"DEBUG: Sending final bundled reply to user {user_id}: '{reply_text[:50]}...'")
-        line_bot_api.reply_message(
-            reply_token,
-            TextSendMessage(text=reply_text.strip())
-        )
-        print("DEBUG: Bundled reply sent successfully to LINE.")
-    except Exception as e:
-        print(f"ERROR: Failed to send bundled reply to LINE user {user_id}: {e}.")
-        traceback.print_exc()
-
-
-# --- [修改] 處理文字訊息 ---
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
-    user_id = event.source.user_id # 獲取用戶 ID
-    user_input = event.message.text
-    print(f"DEBUG: 🧾 Received text message from user {user_id}: '{user_input}'")
-
-    if not r:
-        print("ERROR: Redis is not available. The new message bundling logic cannot proceed.")
-        # 可以選擇回覆一個錯誤訊息，或者直接忽略
-        return
-
-    try:
-        # 1. 將訊息存入 Redis 的暫存列表
-        redis_key = f"message_bundle:{user_id}"
-        new_message = {"type": "text", "content": user_input}
-        
-        # 使用 Redis 的列表 (list) 來存放訊息會更直觀，但為了簡單起見，我們先用字串存 JSON
-        messages_str = r.get(redis_key)
-        if messages_str:
-            message_list = json.loads(messages_str)
-        else:
-            message_list = []
-        message_list.append(new_message)
-        
-        # 存回去，並設定過期時間 (例如 1 分鐘)，避免用戶不再發言導致資料殘留
-        r.set(redis_key, json.dumps(message_list), ex=60) 
-        print(f"DEBUG: Appended text message to bundle for user {user_id}.")
-
-        # 2. 重置該用戶的計時器
-        # 如果已有計時器，先取消它
-        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
-            user_message_timers[user_id].cancel()
-            print(f"DEBUG: Cancelled existing timer for user {user_id}.")
-
-        # 建立一個新的計時器
-        # 注意：reply_token 會在 Webhook 回應後失效，所以我們需要傳入最新的 reply_token
-        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
-        user_message_timers[user_id] = timer
-        timer.start()
-        print(f"DEBUG: Started new {MESSAGE_BUNDLE_DELAY}s timer for user {user_id}.")
-
-    except Exception as e:
-        print(f"ERROR: An error occurred in handle_text_message for user {user_id}: {e}")
-        traceback.print_exc()
-
-# --- [修改] 處理圖片訊息 ---
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image_message(event):
-    user_id = event.source.user_id # 獲取用戶 ID
-    print(f"DEBUG: 🖼️ Received image message from user {user_id}")
-    
-    if not r:
-        print("ERROR: Redis is not available. The new message bundling logic cannot proceed.")
-        return
-        
-    try:
-        # 1. 獲取圖片內容並 Base64 編碼
-        message_content = line_bot_api.get_message_content(event.message.id)
-        image_data = b''
-        for chunk in message_content.iter_content():
-            image_data += chunk
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-        print(f"DEBUG: Image from user {user_id} Base64 encoded.")
-
-        # 2. 將圖片數據存入 Redis 的暫存列表
-        redis_key = f"message_bundle:{user_id}"
-        new_message = {"type": "image", "content": base64_image}
-
-        messages_str = r.get(redis_key)
-        if messages_str:
-            message_list = json.loads(messages_str)
-        else:
-            message_list = []
-        message_list.append(new_message)
-        
-        r.set(redis_key, json.dumps(message_list), ex=60)
-        print(f"DEBUG: Appended image message to bundle for user {user_id}.")
-
-        # 3. 重置該用戶的計時器
-        if user_id in user_message_timers and user_message_timers[user_id].is_alive():
-            user_message_timers[user_id].cancel()
-            print(f"DEBUG: Cancelled existing timer for user {user_id}.")
-
-        timer = Timer(MESSAGE_BUNDLE_DELAY, process_message_bundle, args=[user_id, event.reply_token])
-        user_message_timers[user_id] = timer
-        timer.start()
-        print(f"DEBUG: Started new {MESSAGE_BUNDLE_DELAY}s timer for user {user_id}.")
-        
-        # [刪除] 不再需要立即回覆「照片收到囉」
-
-    except Exception as e:
-        print(f"ERROR: An error occurred in handle_image_message for user {user_id}: {e}")
-        traceback.print_exc()
-
-# 正確的 Render 啟動方式：讀取 port 並綁定 0.0.0.0
+# --- 伺服器啟動 ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"DEBUG: Starting Flask app on host 0.0.0.0, port {port}")
     app.run(host="0.0.0.0", port=port)
+
+# --- End of final app.py code ---
