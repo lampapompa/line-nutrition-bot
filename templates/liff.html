@@ -350,11 +350,17 @@
                                                  <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
                                                  <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
                                              </div>
-                                             <div class="flex items-center gap-1">
-                                                 <label for="start-date-picker" class="text-xs">自訂開始日:</label>
-                                                 <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                                             <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                                                 <div class="flex items-center gap-1">
+                                                    <label for="start-date-picker" class="text-xs">自訂開始日:</label>
+                                                    <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                                                 </div>
+                                                 <div class="flex items-center gap-1">
+                                                    <label for="end-date-picker" class="text-xs">自訂結束日:</label>
+                                                    <input type="date" id="end-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
+                                                 </div>
                                              </div>
-                                        </div>
+                                             </div>
                                         <canvas id="trendsChart"></canvas>
                                         
                                         <div class="mt-4 p-3 bg-gray-50 rounded-lg">
