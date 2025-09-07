@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, abort
+from flask import Flask, request, abort, render_template, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
@@ -11,6 +11,7 @@ import base64
 import requests
 import redis # 導入 redis 庫
 import json # 導入 json 庫用於序列化數據
+import database # [新增] 導入我們自己寫的 database 模組
 
 app = Flask(__name__)
 
@@ -97,6 +98,46 @@ def callback():
         abort(500)
 
     return "OK"
+
+# --- [新增] LIFF 頁面與 API 路由 ---
+
+@app.route("/liff")
+def liff_page():
+    # 它會去 templates 資料夾中，找出 liff.html 這個檔案並回傳
+    return render_template('liff.html')
+
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
+
+@app.route("/init-db")
+def init_database_route():
+    try:
+        database.init_db()
+        return "Database tables initialized successfully!"
+    except Exception as e:
+        traceback.print_exc()
+        return f"An error occurred during database initialization: {e}", 500
+
+@app.route("/api/save_log", methods=['POST'])
+def save_log_route():
+    try:
+        data = request.get_json()
+        database.save_user_log(data)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/load_log", methods=['GET'])
+def load_log_route():
+    try:
+        user_id = request.args.get('userId')
+        user_data = database.load_user_log(user_id)
+        return jsonify({"status": "success", "data": user_data})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- 共用的回覆邏輯 (延遲和分段) ---
 def send_delayed_response(event, reply_text):
