@@ -1,4 +1,4 @@
-# --- Start of final app.py code (v3) ---
+# --- Start of final app.py code (v4 - Refactored Logic) ---
 
 import os
 from flask import Flask, request, abort, render_template, jsonify
@@ -30,6 +30,38 @@ CONVERSATION_MEMORY_SECONDS = 86400
 KEY_MESSAGE_BUNDLE = "message_bundle:{user_id}"
 KEY_CONVERSATION_HISTORY = "conversation_history:{user_id}"
 
+# --- [新增] 您提供的三份高品質提示詞 ---
+PROMPT_VISION_TASK = """你是一位友善且專業的營養師助理，專精於分析食物圖片的營養成分。
+請根據圖片中的食物，提供以下詳細的營養分析：
+
+1.  **分項營養素與份量估計：**
+    -   請列出圖片中所有可識別的食物項目。
+    -   對於每個食物項目，請根據**台灣的飲食指南**，將其歸類到「六大類食物」：**全穀雜糧類、豆魚蛋肉類、乳品類、蔬菜類、水果類、油脂與堅果種子類**。
+    -   估計每種食物的**份量**，並盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」、「適量」或「份」。
+    -   估計每種食物所提供的**熱量 (卡路里)**。
+
+2.  **總熱量加總：**
+    -   計算並提供這份餐點的**總熱量粗估值**。
+
+3.  **整體回覆格式：**
+    -   **第一段 (簡潔總結)：** 直接給出這份餐點的**總熱量粗估值**，例如：「這份餐點大約XXX卡。」這段話應簡短有力，不帶任何表情符號，也不包含細節分析。
+    -   **第二段 (詳細說明)：** 在第一段之後，請換行並列出圖片中所有食物的**六大類分類、估計份量、單項熱量**。請使用清晰的條列式或段落，讓資訊一目瞭然。
+    -   回覆請用口語化、簡潔自然的語氣，就像在 LINE 上與朋友簡短聊天一樣。
+    -   **非常重要：整個回覆請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。**
+"""
+
+PROMPT_NUTRITION_TASK = """你是一位友善、專業的營養師助理。
+請以口語化、簡潔自然的語氣進行回覆，就像在 LINE 上與朋友簡短聊天一樣。
+**非常重要：回覆務必簡潔，直接回答問題核心，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等，直接提供資訊即可。除非必要，否則不需要過度使用表情符號。**
+在回答時，提供專業的營養知識，避免生硬的專業術語。
+**在描述食物份量時，請盡量使用容易理解的日常比喻（例如：拳頭大小、掌心大小、一碗、一個馬克杯等），而不是模糊的「中等」或「適量」。**
+"""
+
+PROMPT_CHAT_TASK = """你是一位友善、貼心且支持性的營養師助理，以**極為簡潔**的方式回應。
+用戶正在表達情緒或分享日常，請給予**簡短且直接**的支持、理解或鼓勵，就像你在 LINE 上對朋友說一句暖心的話。
+保持同理心和鼓勵的語氣。如果語句內容隱含對減重或健康的沮喪，可以給予正向鼓勵。
+**非常重要：回覆務必極其簡潔（目標在20-40字內完成），直接回答核心情緒或內容，請勿使用任何開場白、問候語或結尾語，例如『嘿』、『哈囉』、『您好』、『有問題再問我喔』、『希望有幫助』、『感謝』、『需要其他幫助嗎？』等。避免過度使用表情符號。**
+"""
 
 # --- 初始化 ---
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN loaded: {'Yes' if line_channel_access_token else 'No'}")
@@ -143,7 +175,7 @@ def send_final_message(user_id, reply_token, message_objects):
         line_bot_api.reply_message(reply_token, message_objects)
         print(f"DEBUG: Successfully replied to user {user_id} using reply_token.")
     except LineBotApiError as e:
-        if "Invalid reply token" in e.message:
+        if "Invalid reply token" in str(e): # 使用 str(e) 讓判斷更穩定
             print(f"WARN: Reply token for user {user_id} expired. Falling back to push_message.")
             line_bot_api.push_message(user_id, message_objects)
             print(f"DEBUG: Successfully pushed message to user {user_id}.")
@@ -154,7 +186,7 @@ def send_final_message(user_id, reply_token, message_objects):
         print(f"ERROR: An unexpected error occurred in send_final_message for user {user_id}: {e}")
         traceback.print_exc()
 
-# [修改] 徹底移除分流邏輯，統一由 GPT-4o 處理所有訊息
+# --- [核心修改] 採用「程式做路由，AI 當專家」的新流程 ---
 def process_message_bundle(user_id, reply_token):
     print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting bundle processing.")
     
@@ -191,7 +223,6 @@ def process_message_bundle(user_id, reply_token):
         if msg['type'] == 'text':
             user_text_parts.append(msg['content'])
         elif msg['type'] == 'image':
-            # [新功能] 強制啟用高解析度模式
             current_user_content.append({
                 "type": "image_url",
                 "image_url": {
@@ -201,71 +232,61 @@ def process_message_bundle(user_id, reply_token):
             })
     
     combined_text = "\n".join(user_text_parts)
-    if has_image:
+    if combined_text:
         current_user_content.insert(0, {"type": "text", "text": combined_text})
-        current_input_for_history = current_user_content
+
+    # 為了儲存歷史紀錄，需要一個簡潔的表示
+    if has_image:
+        current_input_for_history = "[使用者傳送了圖片]\n" + combined_text
     else:
         current_input_for_history = combined_text
 
     try:
-        # [刪除] 徹底移除分流邏輯，不再需要 classification_prompt 和 gpt-3.5 呼叫
+        system_prompt = None
         
-        # [修改] 統一使用最終版的「超級指令」
-        system_prompt = """# 最高指導原則
-你的每一個字、每一個建議，都必須嚴格服務於一個最終目標：**幫助正在參加減重課程的學員成功減重**。你必須時刻牢記他們的身份和目標。當回答任何問題時，即使是看似無關的常識問題（例如酒精熱量、特定水果的糖分），都必須**主動**將答案與**『這在減重期間意味著什麼』**這個核心背景連結起來，提供具體、貼心且可執行的建議。你回覆的最核心價值，就是提供即時、詳細、可執行的飲食分析和建議，讓學員感受到你的專業與速度。
-
-# 主要任務：綜合處理使用者輸入
-你的任務是處理使用者傳來的所有內容（圖片和文字）。請按照以下**優先級順序**來理解和回應：
-
-## 優先級1：識別與處理【使用者修正】
-如果使用者的最新訊息是在**修正**你上一輪的回覆（例如：指正食物名稱、提供包裝上的確切熱量），你必須執行**『錯誤修正協定』**：
-1. **誠懇感謝與承認**：立刻感謝使用者的指正，並用輕鬆的語氣承認自己的估算有誤。
-2. **採納使用者數據**：明確表示將以**使用者提供的數據為準**。
-3. **基於新數據提供價值**：根據修正後的準確數據，重新提供有價值的分析或建議，並將其與減重目標連結。
-
-## 優先級2：分析與建議【食物內容】
-對於所有你能辨識為「食物」的內容，你必須執行**『逐項拆解分析協定』**：
-1. **即時食物拆解**：像閃電般迅速地**列出圖片中所有可辨識的食物項目**（例如：白飯、雞胸肉、花椰菜...）。
-2. **個別熱量預估**：為每個食物項目**精準預估其大致熱量**。
-3. **總熱量加總**：在所有項目列出後，**加總並顯示這餐的總預估熱量**。
-4. **提出減重優化建議**：在總結後，主動提出**具體的食物代換建議**。
-5. **解釋減重策略**：在建議中，簡短說明**為什麼**要這樣代換，並扣回減重核心概念（例如：**增加飽足感**、**提高蛋白質**等）。
-
-## 優先級3：互動與引導【非食物內容】
-對於所有非修正、非食物的內容（如寵物照、風景照、閒聊等），請遵循**『通用互動原則』**，用**一句話**進行簡短、溫暖或幽默的互動，然後自然地結束話題。
-
-# 附加指令：上下文關聯
-當使用者在傳送了新的圖片或內容後，緊接著提出問題時，如果問題中使用了『這個』、『那張圖』、『它』等模糊的代名詞，你**必須優先**將其關聯到**本輪對話中最新收到的內容**進行回答。只有當使用者明確指出了編號或你之前給過的標籤（如『第一道菜』）時，才以該指定為準。
-
-# 最終回覆格式
-你的回覆必須是一氣呵成的單一訊息，且**務必包含逐項食物拆解和總熱量預估**。
-- 如果是**修正回覆**，格式應為：【感謝與承認】-> **【逐項拆解與熱量預估】** -> 【基於新數據的分析與建議】。
-- 如果是**常規分析**，格式應為：**【逐項拆解與熱量預估】** -> 【營養分析與減重建議】 -> 【--- 分隔線】 -> 【P.S. 溫馨互動】。
-- 所有互動都必須簡潔扼要。
-
-## 情境：內容中【完全沒有】可辨識的食物
-如果使用者傳來的內容，你判斷**完全不含任何可分析的食物**，你的目標是**禮貌地說明情況，並主動提供替代方案**，讓對話得以繼續。你的回覆應自然地包含以下**三個核心主軸**，但請用**你自己的、每次略有不同的口語化方式**來表達，**絕對不要使用一模一樣的罐頭訊息**：
-1. **核心主軸1 - 承認看不懂**：友善地表明你無法從中辨識出食物內容。
-2. **核心主軸2 - 表明能力範圍**：告訴使用者，你非常擅長分析「食品包裝」上的「營養成分」或「成分表」。
-3. **核心主軸3 - 引導下一步**：鼓勵使用者若有相關資訊，可以提供給你。
-"""
-        
-        # 組合 OpenAI 的 messages
-        messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history
+        # 3. 【程式路由】根據是否有圖片決定任務
         if has_image:
-            messages_to_openai.append({"role": "user", "content": current_user_content})
+            # --- 有圖路徑 ---
+            print(f"DEBUG: [Router] Image detected. Assigning Vision Task to Nutritionist.")
+            system_prompt = PROMPT_VISION_TASK
         else:
-            messages_to_openai.append({"role": "user", "content": combined_text})
+            # --- 純文字路徑 ---
+            print(f"DEBUG: [Router] Text only. Using classifier to determine task for Nutritionist.")
+            # 使用 GPT-3.5 進行意圖分類
+            classifier_response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "你是一個訊息分類器。請判斷用戶的訊息屬於以下哪一種類型：\n- 『營養/健康相關』\n- 『情緒/閒聊/非營養提問』\n\n只回覆分類名稱，不要有其他文字。"},
+                    {"role": "user", "content": combined_text or "（使用者沒有輸入文字）"}
+                ],
+                temperature=0
+            )
+            intent = classifier_response.choices[0].message.content.strip()
+            print(f"DEBUG: [Classifier] Intent is '{intent}'")
+
+            if '營養/健康相關' in intent:
+                system_prompt = PROMPT_NUTRITION_TASK
+            else: # 包含 '情緒/閒聊' 或其他無法判斷的情況
+                system_prompt = PROMPT_CHAT_TASK
         
-        response = client.chat.completions.create(model="gpt-4o", messages=messages_to_openai, temperature=0.7, max_tokens=1024)
+        # 4. 組合最終請求並呼叫 OpenAI
+        messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history
+        messages_to_openai.append({"role": "user", "content": current_user_content})
+        
+        response = client.chat.completions.create(
+            model="gpt-4o", 
+            messages=messages_to_openai, 
+            temperature=0.7, 
+            max_tokens=1024
+        )
         reply_text = response.choices[0].message.content.strip()
 
-        # 更新記憶
+        # 5. 更新記憶
         r.rpush(history_key, json.dumps({"role": "user", "content": current_input_for_history}))
         r.rpush(history_key, json.dumps({"role": "assistant", "content": reply_text}))
         r.expire(history_key, CONVERSATION_MEMORY_SECONDS)
 
-        # 統一發送最終訊息
+        # 6. 統一發送最終訊息
         send_final_message(user_id, reply_token, TextSendMessage(text=reply_text))
         
     except Exception as e:
@@ -275,7 +296,7 @@ def process_message_bundle(user_id, reply_token):
         send_final_message(user_id, reply_token, TextSendMessage(text=error_message))
 
 
-# [修改] 處理文字訊息的函式
+# 處理文字訊息的函式
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id
@@ -308,7 +329,7 @@ def handle_text_message(event):
         print(f"ERROR: An error occurred in handle_text_message for user {user_id}: {e}")
         traceback.print_exc()
 
-# [修改] 處理圖片訊息的函式
+# 處理圖片訊息的函式
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     user_id = event.source.user_id
@@ -350,4 +371,4 @@ if __name__ == "__main__":
     print(f"DEBUG: Starting Flask app on host 0.0.0.0, port {port}")
     app.run(host="0.0.0.0", port=port)
 
-# --- End of final app.py code ---
+# --- End of final app.py code (v4 - Refactored Logic) ---
