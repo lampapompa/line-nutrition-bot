@@ -1320,12 +1320,12 @@ function updateTrendsMembershipInfo() {
 async function main() {
     try {
         // ▼▼▼ 加入偵錯 - 在 liff.init 之前 ▼▼▼
-        alert(`初始 URL: ${window.location.href}`);
+        //alert(`初始 URL: ${window.location.href}`);
         
         await liff.init({ liffId });
         
         // ▼▼▼ 加入偵錯 - 在 liff.init 之後 ▼▼▼
-        alert(`LIFF 初始化後 URL: ${window.location.href}`);
+        //alert(`LIFF 初始化後 URL: ${window.location.href}`);
         
         if (!liff.isLoggedIn()) {
             liff.login({ redirectUri: window.location.href });
@@ -1333,13 +1333,13 @@ async function main() {
         }
 
         // ▼▼▼ 修改這整段 ▼▼▼
-        alert('準備取得 profile...');
+        //alert('準備取得 profile...');
         let profile;  // 改成 let，不要 const
         try {
             profile = await liff.getProfile();  // 不要 const
-            alert(`取得 profile 成功: ${profile.userId}`);
+            //alert(`取得 profile 成功: ${profile.userId}`);
         } catch (error) {
-            alert(`取得 profile 失敗: ${error.message}`);
+            //alert(`取得 profile 失敗: ${error.message}`);
             // 如果取得 profile 失敗，使用空的 profile
             profile = { userId: 'unknown' };  // 不要 const
         }
@@ -1350,7 +1350,7 @@ async function main() {
         const operatorIdFromUrl = urlParams.get('operatorId');
         
         // ▼▼▼ 加入偵錯 ▼▼▼
-        alert(`取得的參數:\ntargetUserId: ${targetUserIdFromUrl}\noperatorId: ${operatorIdFromUrl}`);
+        //alert(`取得的參數:\ntargetUserId: ${targetUserIdFromUrl}\noperatorId: ${operatorIdFromUrl}`);
         
         if (targetUserIdFromUrl && operatorIdFromUrl) {
             isViewingAsAdmin = true;
