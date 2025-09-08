@@ -39,14 +39,10 @@ const formatTimestamp = (isoString) => {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// ===== ▼▼▼ 請新增這個輔助函式 ▼▼▼ =====
 function formatDetailedDate(isoString) {
-    // 如果日期不存在 (是 null 或 undefined)，就回傳您要的預設文字
     if (!isoString) {
         return '--年--月--日 --:--';
     }
-    
-    // 如果有日期，就進行格式化
     try {
         const date = new Date(isoString);
         const year = date.getFullYear();
@@ -57,16 +53,15 @@ function formatDetailedDate(isoString) {
         const minutes = date.getMinutes().toString().padStart(2, '0');
         const ampm = hours >= 12 ? '下午' : '上午';
         hours = hours % 12;
-        hours = hours ? hours : 12; // 讓 0 點顯示為 12
+        hours = hours ? hours : 12;
         const hoursStr = hours.toString().padStart(2, '0');
         
         return `${year}/${month}/${day} ${ampm} ${hoursStr}:${minutes}`;
     } catch (e) {
         console.error("日期格式化失敗:", e);
-        return '--年--月--日 --:--'; // 格式化出錯也回傳預設值
+        return '--年--月--日 --:--';
     }
 }
-// ===== ▲▲▲ 新增輔助函式結束 ▲▲▲ =====
 
 async function fetchAPI(endpoint, options = {}) {
     const defaultHeaders = {
@@ -189,9 +184,8 @@ function triggerProfileAutosave() {
 async function loadProfileData() {
     if (!userToLoad) return;
     const data = await fetchAPI(`/api/profile?userId=${userToLoad}`);
-    userProfileData = { ...userProfileData, ...data }; // 將從後端獲取的資料存到全域變數
+    userProfileData = { ...userProfileData, ...data };
 
-    // 填充個人檔案頁面的欄位
     document.getElementById('height').value = userProfileData.height || '';
     document.getElementById('profile-weight').value = userProfileData.profile_weight || '';
     document.getElementById('age').value = userProfileData.age || '';
@@ -205,19 +199,13 @@ async function loadProfileData() {
     document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
     document.getElementById('target-calories').value = userProfileData.target_calories || '';
 
-    // 根據填充的資料，執行相關的計算與UI更新
     updateProfileCalculations();
-
-    // 【修改點一】每次载入最新资料后，都手动更新一次会籍显示
     updateMembershipBanner();
 
-    // ===== ▼▼▼ 請將這三行新增的程式碼加在這裡 ▼▼▼ =====
     document.getElementById('display-membership-start').textContent = formatDetailedDate(userProfileData.membership_start_date);
     document.getElementById('display-membership-end').textContent = formatDetailedDate(userProfileData.expiry_timestamp);
     document.getElementById('display-membership-termination').textContent = formatDetailedDate(userProfileData.service_termination_date);
-    // ===== ▲▲▲ 新增程式碼結束 ▲▲▲ =====
 
-    // 更新熱量目標按鈕的選中狀態
     document.querySelectorAll('.goal-button').forEach(btn => btn.classList.remove('selected'));
     if (userProfileData.target_calories) {
         setTimeout(() => {
@@ -280,6 +268,68 @@ async function loadLogDataForDate(date) {
     }
 }
 
+// ===== ▼▼▼ 1. 新增：處理問卷提交與AI分析的核心函式 ▼▼▼ =====
+async function handleQuestionnaireSubmit() {
+    // 顯示一個處理中的提示，避免使用者重複點擊
+    const submitButton = document.getElementById('submit-questionnaire-btn');
+    const originalButtonText = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `
+        <svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    `;
+
+    try {
+        // Step 1: 收集所有問卷答案
+        const questionnaireData = {
+            // Part 2
+            q7_occupation: document.getElementById('q7-occupation').value,
+            q7_occupation_other: document.getElementById('q7-occupation-other').value,
+            q8_sleep_hours: document.getElementById('q8-sleep-hours').value,
+            q9_exercise_habit: document.querySelector('input[name="q9-exercise-habit"]:checked')?.value || null,
+            q10_stress_level: document.getElementById('q10-stress-level').value,
+            // Part 3 (您需要加入對應的欄位ID)
+            q11_meal_source: document.querySelector('input[name="q11-meal-source"]:checked')?.value || null,
+            // ... 收集 Part 3, 4, 5 的所有答案 ...
+        };
+
+        // Step 2: 呼叫後端 API，將問卷資料送過去
+        // 注意：這個 API (/api/summarize-questionnaire) 是我們下一步需要在 apiserver.py 中建立的
+        const response = await fetchAPI('/api/summarize-questionnaire', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: userToLoad,
+                questionnaireData: questionnaireData
+            })
+        });
+
+        // Step 3: 處理後端回傳的 AI 總結
+        if (response && response.ai_summary) {
+            const aiAnalysisContainer = document.getElementById('ai-analysis-content');
+            aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>'); // 將換行符轉為 <br>
+            showToast('個人化分析已生成！');
+
+            // Step 4: 自動切換到 AI 分析小分頁
+            switchSubTab('ai-analysis');
+        } else {
+            throw new Error('後端未回傳有效的 AI 總結');
+        }
+
+    } catch (error) {
+        console.error("提交問卷或生成AI分析失敗:", error);
+        showToast('分析生成失敗，請稍後再試');
+        // 在 AI 分析頁顯示錯誤訊息
+        document.getElementById('ai-analysis-content').textContent = '無法生成您的個人化分析報告，請聯繫您的營養師。';
+    } finally {
+        // 無論成功或失敗，都恢復按鈕的原始狀態
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonText;
+    }
+}
+// ===== ▲▲▲ 1. 新增結束 ▲▲▲ =====
+
 // --- 4. UI 更新與事件處理函式 ---
 function handleLogInputChange() {
     updateGoalDashboard();
@@ -310,9 +360,7 @@ async function showNextMonth() {
     await loadLogDataForDate(currentDate);
 }
 
-// ===== ▼▼▼ START: 此函式為本次主要修改處 ▼▼▼ =====
 async function updateChartRange(range, element = null) {
-    // 按鈕點擊樣式處理
     document.querySelectorAll('.range-btn').forEach(btn => {
         btn.classList.remove('active', 'bg-emerald-500', 'text-white');
         btn.classList.add('bg-gray-200');
@@ -321,44 +369,38 @@ async function updateChartRange(range, element = null) {
     if (element && element.tagName === 'BUTTON') {
         element.classList.add('active', 'bg-emerald-500', 'text-white');
         element.classList.remove('bg-gray-200');
-        // 點擊按鈕時，清空自訂日期選擇器
         document.getElementById('start-date-picker').value = '';
         document.getElementById('end-date-picker').value = '';
     }
     
-    // 如果是來自日期選擇器的呼叫，則不清空按鈕樣式
     if (element && (element.id === 'start-date-picker' || element.id === 'end-date-picker')) {
-        // 不需要特別處理按鈕樣式
+        // No special handling needed
     }
 
     let params = '';
     if (range === 'custom_date') {
         const startDate = document.getElementById('start-date-picker').value;
         const endDate = document.getElementById('end-date-picker').value;
-        if (startDate && endDate) { // 確保兩個日期都有值才發送請求
+        if (startDate && endDate) {
             params = `?userId=${userToLoad}&startDate=${startDate}&endDate=${endDate}`;
             await renderChart(params);
         }
-        // 如果日期不完整，則不執行任何操作
         return; 
     } else if (range === 'membership_period') {
         if (userProfileData.membership_start_date) {
             const startDate = userProfileData.membership_start_date.split('T')[0];
             params = `?userId=${userToLoad}&range=${startDate}`;
         } else {
-            // Fallback 到 7 天
             params = `?userId=${userToLoad}&range=7days`;
             document.querySelector('button[onclick="updateChartRange(\'7days\', this)"]').click();
             return;
         }
     } else {
-        // 處理 '7days', '14days' 等
         params = `?userId=${userToLoad}&range=${range}`;
     }
     
     await renderChart(params);
 }
-// ===== ▲▲▲ END: 此函式為本次主要修改處 ▲▲▲ =====
 
 
 function updateChartVisibility(event) { if (trendsChart) { trendsChart.setDatasetVisibility(event.target.dataset.datasetIndex, event.target.checked); trendsChart.update(); } }
@@ -381,31 +423,70 @@ function hideAllChartDatasets() {
     document.querySelectorAll('.chart-toggle').forEach(el => el.checked = false);
 }
 
-
+// ===== ▼▼▼ 2. 修改：switchTab 函式，處理大分頁邏輯 ▼▼▼ =====
 function switchTab(tabName) {
-    ['profile', 'log', 'trends'].forEach(tabId => {
-        document.getElementById(tabId + '-tab').classList.add('hidden');
-        document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.remove('active', 'text-gray-900');
+    // 隱藏所有大分頁內容
+    ['profile-main-tab', 'log-tab', 'trends-tab'].forEach(tabId => {
+        const tabElement = document.getElementById(tabId);
+        if (tabElement) tabElement.classList.add('hidden');
     });
-    document.getElementById(tabName + '-tab').classList.remove('hidden');
-    const button = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
-    button.classList.add('active', 'text-gray-900');
 
+    // 移除所有大分頁按鈕的 active 狀態
+    document.querySelectorAll('.main-tab-button').forEach(button => {
+        button.classList.remove('active', 'text-gray-900');
+    });
+
+    // 顯示被點擊的大分頁內容
+    const targetTabId = (tabName === 'profile' ? 'profile-main-tab' : tabName + '-tab');
+    const targetTabElement = document.getElementById(targetTabId);
+    if (targetTabElement) targetTabElement.classList.remove('hidden');
+
+    // 設定被點擊的大分頁按鈕為 active 狀態
+    const activeButton = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
+    if (activeButton) activeButton.classList.add('active', 'text-gray-900');
+
+    // 根據不同的大分頁執行特定邏輯
     if (tabName === 'trends') {
         document.getElementById('calc-footnote').style.display = 'none';
-        updateTrendsMembershipInfo(); // <--- 【修改點】
+        updateTrendsMembershipInfo();
         renderChart();
     } else if (tabName === 'log') {
         document.getElementById('calc-footnote').style.display = 'block';
         updateGoalDashboard();
     } else if (tabName === 'profile') {
         document.getElementById('calc-footnote').style.display = 'block';
-        // 【修改點二】切换到个人档案页时，也手动更新一次会籍显示
         updateMembershipBanner();
+        // **重要**：當切換到「我的檔案」大分頁時，預設顯示第一個小分頁「目標設定」
+        switchSubTab('goal-setting');
     } else {
         document.getElementById('calc-footnote').style.display = 'none';
     }
 }
+// ===== ▲▲▲ 2. 修改結束 ▲▲▲ =====
+
+
+// ===== ▼▼▼ 3. 新增：switchSubTab 函式，處理「我的檔案」底下的小分頁切換 ▼▼▼ =====
+function switchSubTab(subTabName) {
+    // 隱藏所有小分頁內容
+    ['goal-setting-sub-tab', 'questionnaire-sub-tab', 'ai-analysis-sub-tab'].forEach(subTabId => {
+        const subTabElement = document.getElementById(subTabId);
+        if (subTabElement) subTabElement.classList.add('hidden');
+    });
+
+    // 移除所有小分頁按鈕的 active 狀態
+    document.querySelectorAll('.sub-tab-button').forEach(button => {
+        button.classList.remove('active'); // 假設 active 狀態的 CSS class 是 'active'
+    });
+
+    // 顯示被點擊的小分頁內容
+    const targetSubTabElement = document.getElementById(subTabName + '-sub-tab');
+    if (targetSubTabElement) targetSubTabElement.classList.remove('hidden');
+
+    // 設定被點擊的小分頁按鈕為 active 狀態
+    const activeSubButton = document.querySelector(`button[onclick="switchSubTab('${subTabName}')"]`);
+    if (activeSubButton) activeSubButton.classList.add('active');
+}
+// ===== ▲▲▲ 3. 新增結束 ▲▲▲ =====
 
 function updateLocalProfileValue(key, value) {
     userProfileData[key] = value;
@@ -602,15 +683,11 @@ async function renderCalendar(year, month) {
 }
 
 async function renderChart(params) {
-    // 原本的 renderChart 函式現在只接收 params 字串
     if (!params) {
-        // 提供一個預設值，例如，如果沒有參數就載入最近7天
         params = `?userId=${userToLoad}&range=7days`;
     }
     try {
         const apiResponse = await fetchAPI(`/api/trends${params}`);
-
-        // 為了相容舊的圖表繪製邏輯，只取出圖表需要的數據
         const chartData = {
             labels: apiResponse.labels,
             weight: apiResponse.weight,
@@ -681,11 +758,11 @@ async function renderChart(params) {
                         max: maxWeight,
                     },
                     yKcal: {
-                        type: 'linear', // BUG FIX
+                        type: 'linear',
                         position: 'right',
                         title: { display: true, text: 'kcal / c.c. / 包' },
                         grid: { drawOnChartArea: false },
-                        min: 0, // BUG FIX
+                        min: 0,
                         max: finalRightAxisMax,
                     }
                 }
@@ -816,8 +893,9 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
-
+// ===== ▼▼▼ 4. 修改：setupEventListeners 函式，加入新功能事件綁定 ▼▼▼ =====
 function setupEventListeners() {
+    // ---- 原有事件綁定 (完全不變) ----
     document.querySelectorAll('.profile-input').forEach(el => {
         el.addEventListener('input', (event) => {
             const keyMap = {
@@ -845,12 +923,8 @@ function setupEventListeners() {
     document.getElementById('next-month-btn').addEventListener('click', showNextMonth);
     document.querySelectorAll('.chart-toggle').forEach(el => el.addEventListener('change', updateChartVisibility));
     
-    // ===== ▼▼▼ START: 此處為本次修改點 ▼▼▼ =====
-    // 修改原本的事件監聽，讓兩個日期選擇器共用一個處理邏輯
     document.getElementById('start-date-picker').addEventListener('change', () => updateChartRange('custom_date', document.getElementById('start-date-picker')));
     document.getElementById('end-date-picker').addEventListener('change', () => updateChartRange('custom_date', document.getElementById('end-date-picker')));
-    // ===== ▲▲▲ END: 此處為本次修改點 ▲▲▲ =====
-
 
     const showAllBtn = document.getElementById('show-all-btn');
     if (showAllBtn) showAllBtn.addEventListener('click', showAllChartDatasets);
@@ -919,8 +993,11 @@ function setupEventListeners() {
         if (type && !isNaN(duration)) {
             const bmr = userProfileData.bmr;
             if (!bmr) {
-                alert("請先到「個人檔案」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
-                switchTab('profile');
+                // 原本的 switchTab('profile') 需要根據新的 HTML 結構進行調整
+                // 我們統一導向到'我的檔案'大分頁，並顯示'目標設定'小分頁
+                alert("請先到「我的檔案」>「目標設定」頁面填寫完整的身高、體重、年齡和性別，才能使用個人化運動熱量計算功能喔！");
+                switchTab('profile'); 
+                switchSubTab('goal-setting');
                 return;
             }
             const existingExercise = currentExerciseSession.find(ex => ex.type === type);
@@ -957,7 +1034,6 @@ function setupEventListeners() {
         capsuleInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-
     document.getElementById('get-user-id-btn').addEventListener('click', () => {
         if (operatorId) {
             navigator.clipboard.writeText(operatorId).then(() => {
@@ -968,7 +1044,24 @@ function setupEventListeners() {
             });
         }
     });
+
+    // ---- 新增事件綁定 ----
+    
+    // 1. 綁定「我的檔案」底下三個小分頁按鈕的點擊事件
+    document.querySelectorAll('.sub-tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+            const subTabName = button.getAttribute('data-sub-tab');
+            switchSubTab(subTabName);
+        });
+    });
+
+    // 2. 綁定問卷「生成AI分析」按鈕的點擊事件
+    const submitBtn = document.getElementById('submit-questionnaire-btn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', handleQuestionnaireSubmit);
+    }
 }
+// ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
 function renderUserExerciseButtons() {
     const container = document.getElementById('quick-add-exercise');
@@ -1027,24 +1120,18 @@ function updateMembershipBanner() {
     const displayDiv = document.getElementById('membership-dates-display');
     if (!displayDiv) return;
 
-    // [MODIFIED] 邏輯簡化：直接從 userProfileData 中讀取後端準備好的 banner_info
-    // 不再需要前端自己做 if/else 判斷
     const bannerInfo = userProfileData.banner_info;
 
     if (bannerInfo && bannerInfo.text && bannerInfo.color_class) {
         displayDiv.textContent = bannerInfo.text;
-        // 確保 className 的基礎樣式保留，只替換顏色相關的部分
         displayDiv.className = `text-sm px-3 py-1 rounded-full ${bannerInfo.color_class}`;
     } else {
-        // Fallback: 如果後端因故沒有提供 banner_info，則顯示一個通用訊息
         displayDiv.textContent = '會籍狀態讀取中...';
         displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-800';
     }
 }
 
-// ===== ▼▼▼ START: 新增的函式 ▼▼▼ =====
 function updateTrendsMembershipInfo() {
-    // 更新頂部標題 (e.g., "會籍有效 (剩 5 天)")
     const displayDiv = document.getElementById('membership-dates-display-trends');
     if (!displayDiv) return;
     const bannerInfo = userProfileData.banner_info;
@@ -1056,16 +1143,12 @@ function updateTrendsMembershipInfo() {
         displayDiv.className = 'text-sm px-3 py-1 rounded-full bg-gray-100 text-gray-800';
     }
 
-    // 更新上次更新時間
     document.getElementById('last-updated-trends').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
 
-    // 更新詳細日期
     document.getElementById('display-membership-start-trends').textContent = formatDetailedDate(userProfileData.membership_start_date);
     document.getElementById('display-membership-end-trends').textContent = formatDetailedDate(userProfileData.expiry_timestamp);
     document.getElementById('display-membership-termination-trends').textContent = formatDetailedDate(userProfileData.service_termination_date);
 }
-// ===== ▲▲▲ END: 新增的函式 ▲▲▲ =====
-
 
 async function main() {
     try {
@@ -1091,20 +1174,8 @@ async function main() {
             userProfileData.displayName = profile.displayName;
         }
 
-        // 唯一權限檢查點：如果 loadProfileData 失敗 (後端回傳 403)，直接跳到 catch
         await loadProfileData();
 
-        // --- 如果程式能走到這裡，代表權限驗證通過 ---
-
-        // [MODIFIED] 不再需要前端判斷 Trial 狀態來顯示橫幅，因為後端會直接提供
-        // 這個 trial-banner 的顯示邏輯可以考慮移除或由後端控制
-        // if (!isViewingAsAdmin) {
-        //     if (userProfileData.status === 'Trial') {
-        //         document.getElementById('trial-banner').classList.remove('hidden');
-        //     }
-        // }
-
-        // [MODIFIED] 此函式現在只會顯示後端準備好的資訊，不再進行判斷
         updateMembershipBanner();
 
         if (userProfileData.membership_start_date) {
@@ -1114,7 +1185,6 @@ async function main() {
         }
 
         if (!isViewingAsAdmin && !userProfileData.display_name && profile.displayName) {
-            // 這個僅為更新名稱，不影響核心功能，可以非同步執行
             fetchAPI(`/api/profile?userId=${userToLoad}`, {
                 method: 'POST',
                 body: JSON.stringify({ data: { displayName: profile.displayName } })
@@ -1137,16 +1207,17 @@ async function main() {
         await loadUserExercises();
         renderUserExerciseButtons();
         renderProfileQuickExerciseButtons();
-
-        document.querySelector('button[onclick="switchTab(\'log\')"]').classList.add('active', 'text-gray-900');
-        document.getElementById('log-tab').classList.remove('hidden');
-        document.getElementById('calc-footnote').style.display = 'block';
-
+        
+        // 預設顯示「每日記錄」大分頁
+        switchTab('log');
+        
+        // 舊的日曆和日誌載入邏輯保持不變，因為它們在「每日記錄」頁
         await renderCalendar(currentDate.getFullYear(), currentDate.getMonth());
         await loadLogDataForDate(currentDate);
+        
         setupEventListeners();
 
-        updateTrendsMembershipInfo(); // <--- 【修改點】
+        updateTrendsMembershipInfo();
 
     } catch (error) {
         if (error.status === 403) {
