@@ -337,7 +337,7 @@ def handle_profile():
                     q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                     q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                     q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
-                    ai_analysis_timestamp  # ▼▼▼ 新增：讀取分析時間 ▼▼▼
+                    ai_analysis_timestamp
                 FROM user_profiles WHERE user_id = %s
             ''', (user_id,))
             profile = cur.fetchone()
@@ -361,7 +361,7 @@ def handle_profile():
                         q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                         q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                         q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
-                        ai_analysis_timestamp  # ▼▼▼ 新增：讀取分析時間 ▼▼▼
+                        ai_analysis_timestamp
                     FROM user_profiles WHERE user_id = %s
                 ''', (user_id,))
                 profile = cur.fetchone()
