@@ -274,12 +274,14 @@ async function handleQuestionnaireSubmit() {
     const questionnaireContainer = document.getElementById('questionnaire-sub-tab');
 
     // --- Step 1: 必填驗證 ---
+    // ===== ▼▼▼ 【修改】修正 requiredFields 中的 id，使其指向群組容器 ▼▼▼ =====
     const requiredFields = [
         { id: 'q1-occupation-group', type: 'radio', name: 'q1-occupation', message: '請選擇您的職業性質' },
         { id: 'q2-sleep-hours', type: 'number', message: '請輸入您的平均睡眠時數' },
         { id: 'q3-exercise-habit-group', type: 'radio', name: 'q3-exercise-habit', message: '請選擇您的運動習慣' },
         // ... 您可以繼續加入其他必填問題 ...
     ];
+    // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 
     let firstErrorElement = null;
     let allValid = true;
