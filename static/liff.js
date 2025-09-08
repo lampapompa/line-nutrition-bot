@@ -274,12 +274,15 @@ async function handleQuestionnaireSubmit() {
     const questionnaireContainer = document.getElementById('questionnaire-sub-tab');
 
     // --- Step 1: 必填驗證 ---
-    // ===== ▼▼▼ 【修改】修正 requiredFields 中的 id，使其指向群組容器 ▼▼▼ =====
+    // ===== ▼▼▼ 【修改】修正並補完 requiredFields 中的所有必填欄位 ▼▼▼ =====
     const requiredFields = [
         { id: 'q1-occupation-group', type: 'radio', name: 'q1-occupation', message: '請選擇您的職業性質' },
         { id: 'q2-sleep-hours', type: 'number', message: '請輸入您的平均睡眠時數' },
         { id: 'q3-exercise-habit-group', type: 'radio', name: 'q3-exercise-habit', message: '請選擇您的運動習慣' },
-        // ... 您可以繼續加入其他必填問題 ...
+        { id: 'q5-meal-source-group', type: 'radio', name: 'q5-meal-source', message: '請選擇您的三餐來源' },
+        { id: 'q6-water-intake', type: 'number', message: '請輸入您的喝水量' },
+        { id: 'q7-other-drinks-group', type: 'radio', name: 'q7-other-drinks', message: '請選擇您常喝的飲品' },
+        { id: 'q8-snacks-habit-group', type: 'radio', name: 'q8-snacks-habit', message: '請選擇您的點心習慣' },
     ];
     // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 
@@ -287,7 +290,8 @@ async function handleQuestionnaireSubmit() {
     let allValid = true;
 
     // 清除舊的錯誤提示
-    questionnaireContainer.querySelectorAll('.border-red-500').forEach(el => el.classList.remove('border-red-500', 'border-2'));
+    questionnaireContainer.querySelectorAll('.question-item.border-red-500').forEach(el => el.classList.remove('border-red-500', 'border-2'));
+    questionnaireContainer.querySelectorAll('input.border-red-500').forEach(el => el.classList.remove('border-red-500', 'border-2'));
 
     for (const field of requiredFields) {
         let isFieldValid = false;
@@ -306,21 +310,19 @@ async function handleQuestionnaireSubmit() {
             }
             errorElement = element;
         }
-        // ... 可以擴充以支援 checkbox, select 等 ...
-
+        
         if (!isFieldValid) {
             allValid = false;
             if (errorElement) {
-                // 對於選項群組，我們在其父容器 question-item 上加紅框
                 const questionItem = errorElement.closest('.question-item');
-                if(questionItem){
-                    questionItem.classList.add('border-red-500', 'border-2'); 
+                if (questionItem) {
+                    questionItem.classList.add('border-red-500', 'border-2');
                 } else {
-                    errorElement.classList.add('border-red-500', 'border-2'); // 加上紅框
+                    errorElement.classList.add('border-red-500', 'border-2');
                 }
 
                 if (!firstErrorElement) {
-                    firstErrorElement = questionItem || errorElement; // 記錄第一個錯誤的元素
+                    firstErrorElement = questionItem || errorElement;
                 }
             }
         }
@@ -329,9 +331,9 @@ async function handleQuestionnaireSubmit() {
     if (!allValid) {
         showToast('哎呀，還有幾個問題沒填完喔！');
         if (firstErrorElement) {
-            firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' }); // 平滑滾動到第一個錯誤處
+            firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-        return; // 中斷執行
+        return; 
     }
     
     // --- Step 2: 如果驗證通過，執行提交 ---
@@ -381,7 +383,6 @@ async function handleQuestionnaireSubmit() {
     } catch (error) {
         console.error("提交問卷或生成AI分析失敗:", error);
         showToast('分析生成失敗，請稍後再試');
-        document.getElementById('ai-analysis-content').textContent = '無法生成您的個人化分析報告，請聯繫您的營養師。';
     } finally {
         submitButton.disabled = false;
         submitButton.innerHTML = originalButtonText;
@@ -942,7 +943,7 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
-// ===== ▼▼▼ 【新增】處理問卷選項提示的函式 ▼▼▼ =====
+// ===== ▼▼▼ 【修改】此函式被重寫以同時處理顏色和文字提示 ▼▼▼ =====
 function updateQuestionnaireIndicator(inputElement) {
     const questionItem = inputElement.closest('.question-item');
     if (!questionItem) return;
@@ -953,16 +954,38 @@ function updateQuestionnaireIndicator(inputElement) {
     const inputType = inputElement.getAttribute('type');
     const inputName = inputElement.getAttribute('name');
 
+    // --- 處理視覺樣式 ---
+    if (inputType === 'radio') {
+        // 先移除同一組所有選項的 'selected' class
+        const allChoiceButtonsInGroup = questionItem.querySelectorAll('.choice-button');
+        allChoiceButtonsInGroup.forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        // 只在被選中的選項上加入 'selected' class
+        if (inputElement.checked) {
+            const parentLabel = inputElement.closest('.choice-button');
+            if (parentLabel) {
+                parentLabel.classList.add('selected');
+            }
+        }
+    } else if (inputType === 'checkbox') {
+        // 對於 checkbox，只切換當前點擊的選項
+        const parentLabel = inputElement.closest('.choice-button');
+        if (parentLabel) {
+            parentLabel.classList.toggle('selected', inputElement.checked);
+        }
+    }
+
+    // --- 處理文字提示 ---
     if (inputType === 'radio') {
         indicator.textContent = inputElement.value;
     } else if (inputType === 'checkbox') {
-        // 找到這個問題所有的 checkbox
         const allCheckboxes = questionItem.querySelectorAll(`input[name="${inputName}"]:checked`);
         const values = Array.from(allCheckboxes).map(cb => cb.value);
         indicator.textContent = values.join(', ');
     }
 }
-// ===== ▲▲▲ 【新增】處理問卷選項提示的函式 ▲▲▲ =====
+// ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 
 // ===== ▼▼▼ 4. 修改：setupEventListeners 函式，加入新功能事件綁定 ▼▼▼ =====
 function setupEventListeners() {
@@ -1132,16 +1155,34 @@ function setupEventListeners() {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
 
-    // ===== ▼▼▼ 【新增】監聽問卷選項變更的事件 ▼▼▼ =====
+    // ===== ▼▼▼ 【修改】將原本的 change 事件改為 click 事件以獲得更佳的反饋體驗 ▼▼▼ =====
     const questionnaireTab = document.getElementById('questionnaire-sub-tab');
     if (questionnaireTab) {
+        questionnaireTab.addEventListener('click', (event) => {
+            const targetLabel = event.target.closest('.choice-button');
+            if (!targetLabel) return;
+
+            const inputElement = targetLabel.querySelector('input[type="radio"], input[type="checkbox"]');
+            if (inputElement) {
+                // 手動觸發 input 的選中狀態，以確保 change 事件能被正確觸發
+                if (inputElement.type === 'radio' && !inputElement.checked) {
+                    inputElement.checked = true;
+                    // 手動觸發 change 事件，因為程式化更改 checked 狀態不會自動觸發
+                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (inputElement.type === 'checkbox') {
+                    inputElement.checked = !inputElement.checked;
+                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        });
+
         questionnaireTab.addEventListener('change', (event) => {
             if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
                 updateQuestionnaireIndicator(event.target);
             }
         });
     }
-    // ===== ▲▲▲ 【新增】監聽問卷選項變更的事件 ▲▲▲ =====
+    // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 }
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
