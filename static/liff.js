@@ -1332,7 +1332,12 @@ async function main() {
             return;
         }
 
+        // ▼▼▼ 在這裡加入新的偵錯 ▼▼▼
+        alert('準備取得 profile...');
         const profile = await liff.getProfile();
+        alert(`取得 profile 成功: ${profile.userId}`);
+        // ▲▲▲ 新增偵錯結束 ▲▲▲
+        
         const urlParams = new URLSearchParams(window.location.search);
         const targetUserIdFromUrl = urlParams.get('targetUserId');
         const operatorIdFromUrl = urlParams.get('operatorId');
