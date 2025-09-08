@@ -1332,18 +1332,25 @@ async function main() {
             return;
         }
 
-        // ▼▼▼ 在這裡加入新的偵錯 ▼▼▼
+        // ▼▼▼ 修改這整段 ▼▼▼
         alert('準備取得 profile...');
-        const profile = await liff.getProfile();
-        alert(`取得 profile 成功: ${profile.userId}`);
-        // ▲▲▲ 新增偵錯結束 ▲▲▲
+        let profile;  // 改成 let，不要 const
+        try {
+            profile = await liff.getProfile();  // 不要 const
+            alert(`取得 profile 成功: ${profile.userId}`);
+        } catch (error) {
+            alert(`取得 profile 失敗: ${error.message}`);
+            // 如果取得 profile 失敗，使用空的 profile
+            profile = { userId: 'unknown' };  // 不要 const
+        }
+        // ▲▲▲ 修改結束 ▲▲▲
         
         const urlParams = new URLSearchParams(window.location.search);
         const targetUserIdFromUrl = urlParams.get('targetUserId');
         const operatorIdFromUrl = urlParams.get('operatorId');
-
+        
         // ▼▼▼ 加入偵錯 ▼▼▼
-        alert(`取得的參數:
+        alert(`取得的參數:\ntargetUserId: ${targetUserIdFromUrl}\noperatorId: ${operatorIdFromUrl}`);
 targetUserId: ${targetUserIdFromUrl}
 operatorId: ${operatorIdFromUrl}`);
         
