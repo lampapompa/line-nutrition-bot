@@ -210,6 +210,96 @@ async function loadProfileData() {
     }
     // ▲▲▲ 新增結束 ▲▲▲
     
+    // ▼▼▼ 在這裡加入：載入問卷答案 ▼▼▼
+    // Part 1: 職業、睡眠、運動、壓力
+    if (userProfileData.q_occupation) {
+        const radio = document.querySelector(`input[name="q1-occupation"][value="${userProfileData.q_occupation}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    if (userProfileData.q_occupation_other) {
+        document.getElementById('q1-occupation-other').value = userProfileData.q_occupation_other;
+        if (userProfileData.q_occupation === 'E') {
+            document.getElementById('q1-occupation-other').classList.remove('hidden');
+        }
+    }
+    if (userProfileData.q_sleep_hours) {
+        document.getElementById('q2-sleep-hours').value = userProfileData.q_sleep_hours;
+    }
+    if (userProfileData.q_exercise_habit) {
+        const radio = document.querySelector(`input[name="q3-exercise-habit"][value="${userProfileData.q_exercise_habit}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    if (userProfileData.q_stress_level) {
+        document.getElementById('q4-stress-level').value = userProfileData.q_stress_level;
+        document.getElementById('q4-stress-value').textContent = `${userProfileData.q_stress_level} 分`;
+    }
+    
+    // Part 2: 飲食習慣
+    if (userProfileData.q_meal_source) {
+        const radio = document.querySelector(`input[name="q5-meal-source"][value="${userProfileData.q_meal_source}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    if (userProfileData.q_daily_water) {
+        document.getElementById('q6-water-intake').value = userProfileData.q_daily_water;
+    }
+    if (userProfileData.q_other_drinks) {
+        const radio = document.querySelector(`input[name="q7-other-drinks"][value="${userProfileData.q_other_drinks}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    if (userProfileData.q_snacks_habit) {
+        const radio = document.querySelector(`input[name="q8-snacks-habit"][value="${userProfileData.q_snacks_habit}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    
+    // Part 3: 健康狀況
+    if (userProfileData.q_health_conditions) {
+        const conditions = userProfileData.q_health_conditions.split(', ');
+        conditions.forEach(condition => {
+            const checkbox = document.querySelector(`input[name="q9-health-condition"][value="${condition}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    }
+    if (userProfileData.q_allergy_details) {
+        document.getElementById('q9-allergy-detail').value = userProfileData.q_allergy_details;
+        document.getElementById('q9-allergy-checkbox').checked = true;
+        document.getElementById('q9-allergy-detail').classList.remove('hidden');
+    }
+    if (userProfileData.q_other_illness) {
+        document.getElementById('q9-other-condition-detail').value = userProfileData.q_other_illness;
+        document.getElementById('q9-other-condition-checkbox').checked = true;
+        document.getElementById('q9-other-condition-detail').classList.remove('hidden');
+    }
+    
+    // Part 4: 動機與目標
+    if (userProfileData.q_past_challenges) {
+        document.getElementById('q10-past-challenges').value = userProfileData.q_past_challenges;
+    }
+    if (userProfileData.q_motivation) {
+        document.getElementById('q11-motivation').value = userProfileData.q_motivation;
+    }
+    if (userProfileData.q_expected_change) {
+        document.getElementById('q12-expected-change').value = userProfileData.q_expected_change;
+    }
+    // ▲▲▲ 載入問卷答案結束 ▲▲▲
+    
     updateProfileCalculations();
     updateMembershipBanner();
 
