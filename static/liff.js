@@ -199,6 +199,17 @@ async function loadProfileData() {
     document.getElementById('last-updated').textContent = userProfileData.last_updated ? `上次更新: ${formatTimestamp(userProfileData.last_updated)}` : '';
     document.getElementById('target-calories').value = userProfileData.target_calories || '';
 
+    // ▼▼▼ 新增：載入 AI 分析資料（加在這裡） ▼▼▼
+    if (userProfileData.ai_profile_summary) {
+        const aiAnalysisContainer = document.getElementById('ai-analysis-content');
+        aiAnalysisContainer.innerHTML = userProfileData.ai_profile_summary.replace(/\n/g, '<br>');
+    }
+    if (userProfileData.ai_analysis_timestamp) {
+        const timestampEl = document.getElementById('ai-analysis-timestamp');
+        timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.ai_analysis_timestamp)}`;
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
+    
     updateProfileCalculations();
     updateMembershipBanner();
 
@@ -354,6 +365,7 @@ async function handleQuestionnaireSubmit() {
             q5_meal_source: getRadioValue('q5-meal-source'),
             q6_water_intake: document.getElementById('q6-water-intake').value,
             q7_other_drinks: getRadioValue('q7-other-drinks'),
+            q7_other_drinks_detail: document.getElementById('q7-other-drinks-detail').value,  // ▼▼▼ 新增 ▼▼▼
             q8_snacks_habit: getRadioValue('q8-snacks-habit'),
             q9_health_conditions: getCheckboxValues('q9-health-condition'),
             q9_allergy_detail: document.getElementById('q9-allergy-detail').value,
@@ -374,6 +386,12 @@ async function handleQuestionnaireSubmit() {
         if (response && response.ai_summary) {
             const aiAnalysisContainer = document.getElementById('ai-analysis-content');
             aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>');
+            // ▼▼▼ 新增：顯示分析時間 ▼▼▼
+            if (response.ai_analysis_timestamp) {
+                const timestampEl = document.getElementById('ai-analysis-timestamp');
+                timestampEl.textContent = `分析生成時間：${formatDetailedDate(response.ai_analysis_timestamp)}`;
+            }
+            // ▲▲▲ 新增結束 ▲▲▲
             showToast('個人化分析已生成！');
             switchSubTab('ai-analysis');
         } else {
@@ -1179,6 +1197,32 @@ function setupEventListeners() {
         questionnaireTab.addEventListener('change', (event) => {
             if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
                 updateQuestionnaireIndicator(event.target);
+                
+                // ▼▼▼ 新增：處理「其他」選項的顯示/隱藏 ▼▼▼
+                // 職業其他
+                if (event.target.name === 'q1-occupation') {
+                    const otherInput = document.getElementById('q1-occupation-other');
+                    otherInput.classList.toggle('hidden', event.target.value !== 'E');
+                }
+                
+                // 飲料其他
+                if (event.target.name === 'q7-other-drinks') {
+                    const otherInput = document.getElementById('q7-other-drinks-detail');
+                    otherInput.classList.toggle('hidden', event.target.value !== 'D');
+                }
+                
+                // 食物過敏
+                if (event.target.id === 'q9-allergy-checkbox') {
+                    const detailInput = document.getElementById('q9-allergy-detail');
+                    detailInput.classList.toggle('hidden', !event.target.checked);
+                }
+                
+                // 其他疾病
+                if (event.target.id === 'q9-other-condition-checkbox') {
+                    const detailInput = document.getElementById('q9-other-condition-detail');
+                    detailInput.classList.toggle('hidden', !event.target.checked);
+                }
+                // ▲▲▲ 新增結束 ▲▲▲
             }
         });
     }
