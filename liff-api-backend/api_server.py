@@ -581,7 +581,9 @@ def get_trends():
     return jsonify({ 'labels': labels, **trend_data, 'averages': averages })
 
 
-# ===== ▼▼▼ 5. 新增：處理問卷提交與AI總結的全新 API 端點 ▼▼▼ =====
+# ==============================================================================
+# ===== ▼▼▼ 【修正】將此函式替換掉您原本的版本以修正問卷 Bug ▼▼▼ =====
+# ==============================================================================
 @app.route('/api/summarize-questionnaire', methods=['POST'])
 def summarize_questionnaire():
     operator_id = request.headers.get('X-Operator-User-Id')
@@ -605,15 +607,26 @@ def summarize_questionnaire():
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         try:
-            # Step 1: 將原始問卷答案存入資料庫
-            # 這裡只列出部分範例，您需要將 liff.js 中收集的所有問卷欄位在此對應
+            # Step 1: 將原始問卷答案存入資料庫 (已修正鍵名)
+            # 將 q9_health_conditions (list) 轉為 string 儲存
+            health_conditions_str = ', '.join(q_data.get('q9_health_conditions', []))
+
             update_fields = {
-                'q_occupation': q_data.get('q7_occupation'),
-                'q_occupation_other': q_data.get('q7_occupation_other'),
-                'q_sleep_hours': to_float_or_none(q_data.get('q8_sleep_hours')),
-                'q_exercise_habit': q_data.get('q9_exercise_habit'),
-                'q_stress_level': to_int_or_none(q_data.get('q10_stress_level')),
-                'q_meal_source': q_data.get('q11_meal_source'),
+                'q_occupation': q_data.get('q1_occupation'),
+                'q_occupation_other': q_data.get('q1_occupation_other'),
+                'q_sleep_hours': to_float_or_none(q_data.get('q2_sleep_hours')),
+                'q_exercise_habit': q_data.get('q3_exercise_habit'),
+                'q_stress_level': to_int_or_none(q_data.get('q4_stress_level')),
+                'q_meal_source': q_data.get('q5_meal_source'),
+                'q_daily_water': to_int_or_none(q_data.get('q6_water_intake')),
+                'q_other_drinks': q_data.get('q7_other_drinks'),
+                'q_snacks_habit': q_data.get('q8_snacks_habit'),
+                'q_health_conditions': health_conditions_str,
+                'q_allergy_details': q_data.get('q9_allergy_detail'),
+                'q_other_illness': q_data.get('q9_other_condition_detail'),
+                'q_past_challenges': q_data.get('q10_past_challenges'),
+                'q_motivation': q_data.get('q11_motivation'),
+                'q_expected_change': q_data.get('q12_expected_change'),
             }
             
             set_clause = ", ".join([f"{key} = %s" for key in update_fields.keys()])
@@ -621,27 +634,40 @@ def summarize_questionnaire():
             
             cur.execute(f"UPDATE user_profiles SET {set_clause} WHERE user_id = %s", tuple(values))
 
-            # Step 2: 準備給 OpenAI 的 Prompt
+            # Step 2: 準備給 OpenAI 的 Prompt (已修正鍵名)
             if not openai_client:
                 raise Exception("OpenAI client 未初始化，無法生成總結。")
 
             cur.execute("SELECT display_name, gender, age, height, profile_weight FROM user_profiles WHERE user_id = %s", (user_id,))
             profile = cur.fetchone()
 
+            # 建立一個輔助函式，讓 prompt 更乾淨
+            def get_q_value(key, default=''):
+                return q_data.get(key) or default
+
             prompt_text = f"""
             # 學員背景資料
             - 稱呼: {profile['display_name'] or '學員'}
-            - 性別: {profile.get('gender')}
-            - 年齡: {profile.get('age')}
-            - 身高: {profile.get('height')} cm
-            - 體重: {profile.get('profile_weight')} kg
+            - 性別: {profile.get('gender') or '未提供'}
+            - 年齡: {profile.get('age') or '未提供'}
+            - 身高: {profile.get('height') or '未提供'} cm
+            - 體重: {profile.get('profile_weight') or '未提供'} kg
 
             # 問卷回覆
-            - 職業性質: {q_data.get('q7_occupation')} ({q_data.get('q7_occupation_other')})
-            - 平均睡眠: {q_data.get('q8_sleep_hours')} 小時
-            - 運動習慣: {q_data.get('q9_exercise_habit')}
-            - 壓力指數: {q_data.get('q10_stress_level')} / 10
-            - 三餐來源: {q_data.get('q11_meal_source')}
+            - 職業性質: {get_q_value('q1_occupation')} ({get_q_value('q1_occupation_other')})
+            - 平均睡眠: {get_q_value('q2_sleep_hours')} 小時
+            - 運動習慣: {get_q_value('q3_exercise_habit')}
+            - 壓力指數: {get_q_value('q4_stress_level')} / 10
+            - 三餐來源: {get_q_value('q5_meal_source')}
+            - 每日飲水: {get_q_value('q6_water_intake')} cc
+            - 其他飲品: {get_q_value('q7_other_drinks')}
+            - 點心習慣: {get_q_value('q8_snacks_habit')}
+            - 健康狀況: {health_conditions_str}
+            - 食物過敏: {get_q_value('q9_allergy_detail')}
+            - 其他疾病: {get_q_value('q9_other_condition_detail')}
+            - 過去挑戰: {get_q_value('q10_past_challenges')}
+            - 主要動機: {get_q_value('q11_motivation')}
+            - 期望改變: {get_q_value('q12_expected_change')}
             """
             
             system_prompt = """
@@ -678,7 +704,9 @@ def summarize_questionnaire():
             conn.rollback() 
             print(f"處理問卷時發生錯誤: {e}")
             return jsonify({"error": "處理問卷時發生內部錯誤"}), 500
-# ===== ▲▲▲ 5. 新增結束 ▲▲▲ =====
+# ==============================================================================
+# ===== ▲▲▲ 【修正】結束 ▲▲▲ =====
+# ==============================================================================
 
 
 # --- 管理員專用 API ---
