@@ -1319,7 +1319,14 @@ function updateTrendsMembershipInfo() {
 
 async function main() {
     try {
+        // ▼▼▼ 加入偵錯 - 在 liff.init 之前 ▼▼▼
+        alert(`初始 URL: ${window.location.href}`);
+        
         await liff.init({ liffId });
+        
+        // ▼▼▼ 加入偵錯 - 在 liff.init 之後 ▼▼▼
+        alert(`LIFF 初始化後 URL: ${window.location.href}`);
+        
         if (!liff.isLoggedIn()) {
             liff.login({ redirectUri: window.location.href });
             return;
