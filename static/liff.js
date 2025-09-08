@@ -1337,6 +1337,11 @@ async function main() {
         const targetUserIdFromUrl = urlParams.get('targetUserId');
         const operatorIdFromUrl = urlParams.get('operatorId');
 
+        // ▼▼▼ 加入偵錯 ▼▼▼
+        alert(`取得的參數:
+targetUserId: ${targetUserIdFromUrl}
+operatorId: ${operatorIdFromUrl}`);
+        
         if (targetUserIdFromUrl && operatorIdFromUrl) {
             isViewingAsAdmin = true;
             userToLoad = targetUserIdFromUrl;
