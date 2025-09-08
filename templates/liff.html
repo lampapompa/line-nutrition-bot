@@ -12,15 +12,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
-        .tab-button.active { border-bottom-color: #10B981; color: #059669; font-weight: 700; }
+        /* ===== ▼▼▼ START：修改樣式 ▼▼▼ ===== */
+        .main-tab-button.active { border-bottom-color: #10B981; color: #059669; font-weight: 700; }
+        .sub-tab-button.active { background-color: #10B981; color: white; }
+        /* ===== ▲▲▲ END：修改樣式 ▲▲▲ ===== */
         input, select, textarea { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-        input[type=checkbox] { accent-color: #10B981; }
+        input[type=checkbox], input[type=radio] { accent-color: #10B981; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .calendar-day { text-align: center; padding: 8px; border-radius: 50%; position: relative; cursor: pointer; }
-        
         .calendar-day.selected { background-color: #a7f3d0; } 
         .calendar-day.today { background-color: #10B981; color: white; } 
-
         .calendar-day .completion-dot {
             position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
             width: 6px; height: 6px; background-color: #fb923c; border-radius: 50%; display: none;
@@ -111,112 +112,189 @@
         </div>
         
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
-            <nav class="flex justify-center -mb-px space-x-6" aria-label="Tabs">
-                <button onclick="switchTab('profile')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">個人檔案</button>
-                <button onclick="switchTab('log')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">每日記錄</button>
-                <button onclick="switchTab('trends')" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">進度追蹤</button>
+            <nav class="flex justify-around -mb-px" aria-label="Tabs">
+                <button onclick="switchTab('profile')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">我的檔案</button>
+                <button onclick="switchTab('log')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">每日記錄</button>
+                <button onclick="switchTab('trends')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">數據分析</button>
             </nav>
         </div>
-
-        <div id="tab-content">
-            <div id="profile-tab" class="hidden space-y-4">
-                <div class="flex justify-between items-center flex-wrap gap-2">
-                    <div id="membership-dates-display" class="text-sm px-3 py-1 rounded-full"></div>
-                    <p id="last-updated" class="text-xs text-gray-400"></p>
-                </div>
-                <div id="membership-details-container" class="mt-2 p-3 bg-gray-100 rounded-lg text-sm space-y-1">
-                    <div>
-                        <span class="text-gray-500 font-medium">會員起日：</span>
-                        <span id="display-membership-start" class="font-semibold text-gray-800">--</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-500 font-medium">會員迄日：</span>
-                        <span id="display-membership-end" class="font-semibold text-gray-800">--</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-500 font-medium">服務終止日：</span>
-                        <span id="display-membership-termination" class="font-semibold text-gray-800">--</span>
-                    </div>
-                </div>
-                <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                <div><label class="block text-sm font-medium text-gray-700">年齡</label><input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">性別</label>
-                    <select id="gender" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"><option value="male">男性</option><option value="female">女性</option></select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">活動量</label>
-                    <select id="activity-level" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
-                        <option value="1.2">久坐 (BMR x 1.2)</option>
-                        <option value="1.375">輕度活動 (BMR x 1.375)</option>
-                        <option value="1.55">中度活動 (BMR x 1.55)</option>
-                        <option value="1.725">高度活動 (BMR x 1.725)</option>
-                        <option value="1.9">極高度活動 (BMR x 1.9)</option>
-                    </select>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-emerald-50 p-3 rounded-lg"><p class="text-sm">基礎代謝率 (BMR)</p><p id="bmr-display" class="text-2xl font-bold text-emerald-600">---</p></div>
-                    <div class="bg-blue-50 p-3 rounded-lg"><p class="text-sm">每日總消耗 (TDEE)</p><p id="tdee-display" class="text-2xl font-bold text-blue-600">---</p></div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">設定每日熱量目標</label>
-                    <div id="goal-options" class="grid grid-cols-3 gap-2 mt-2">
-                        <button data-goal-type="maintain" class="goal-button border border-gray-300 rounded-md p-2 text-sm">維持體重<span class="block font-bold">---</span></button>
-                        <button data-goal-type="mild_loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">溫和減重<span class="block font-bold">---</span><span id="mild-loss-estimate" class="text-xs text-gray-500 mt-1"></span></button>
-                        <button data-goal-type="loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">積極減重<span class="block font-bold">---</span><span id="loss-estimate" class="text-xs text-gray-500 mt-1"></span></button>
-                    </div>
-                    <input type="hidden" id="target-calories">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">設定每日飲水目標 (c.c.)</label>
-                    <p id="water-suggestion" class="text-xs text-gray-500 mb-1"></p>
-                    <input type="number" id="water-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標</label>
-                    <div class="relative flex items-center gap-2 mt-1">
-                        <textarea id="exercise-goal-text" class="profile-input tall-input block w-full border-gray-300 rounded-md pr-8" rows="1" placeholder="點擊下方按鈕新增運動"></textarea>
-                        <button onclick="clearProfileExerciseGoal()" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600" style="left: auto; right: calc(33.33% + 1rem);" aria-label="清除運動目標">
-                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                        <input type="number" id="exercise-goal" class="profile-input tall-input block w-1/3 border-gray-300 rounded-md" placeholder="kcal">
-                    </div>
-                    <p id="exercise-goal-estimate" class="text-xs text-gray-500 mt-1 font-semibold"></p>
-                    <div class="p-2 bg-gray-100 rounded-md mt-2">
-                        <p class="text-xs text-gray-600 mb-2">點擊下方按鈕，快速累加運動量來設定目標：</p>
-                        <div id="profile-quick-add-exercise" class="flex flex-wrap gap-2">
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">設定每日燃脂膠囊目標 (包)</label>
-                    <input type="number" id="capsule-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">個人備註</label>
-                    <textarea id="personal-notes" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" rows="3" placeholder="例如：對花生過敏、不吃牛肉"></textarea>
+        <div id="tab-content-wrapper">
+            
+            <div id="profile-main-tab" class="hidden space-y-4">
+                <div class="flex justify-center p-1 space-x-1 bg-gray-200 rounded-lg">
+                    <button onclick="switchSubTab('goal-setting')" data-sub-tab="goal-setting" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">目標設定</button>
+                    <button onclick="switchSubTab('questionnaire')" data-sub-tab="questionnaire" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">背景探索</button>
+                    <button onclick="switchSubTab('ai-analysis')" data-sub-tab="ai-analysis" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">AI 分析</button>
                 </div>
                 
-                <div class="space-y-3 pt-4 border-t">
-                    <h3 class="text-lg font-bold text-gray-800">設定常用運動</h3>
-                    <p class="text-sm text-gray-600">在此設定您常用的運動，輸入後將自動儲存，並顯示在「每日記錄」頁面作為快捷按鈕。</p>
-                    <div class="space-y-2">
-                        <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-1" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 1 名稱">
-                            <input type="number" id="user-exercise-kcal-1" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                <div id="sub-tab-content">
+                    <div id="goal-setting-sub-tab" class="hidden space-y-4">
+                        <div class="flex justify-between items-center flex-wrap gap-2">
+                            <div id="membership-dates-display" class="text-sm px-3 py-1 rounded-full"></div>
+                            <p id="last-updated" class="text-xs text-gray-400"></p>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-2" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 2 名稱">
-                            <input type="number" id="user-exercise-kcal-2" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                        <div id="membership-details-container" class="mt-2 p-3 bg-gray-100 rounded-lg text-sm space-y-1">
+                            <div>
+                                <span class="text-gray-500 font-medium">會員起日：</span>
+                                <span id="display-membership-start" class="font-semibold text-gray-800">--</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500 font-medium">會員迄日：</span>
+                                <span id="display-membership-end" class="font-semibold text-gray-800">--</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500 font-medium">服務終止日：</span>
+                                <span id="display-membership-termination" class="font-semibold text-gray-800">--</span>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <input type="text" id="user-exercise-name-3" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 3 名稱">
-                            <input type="number" id="user-exercise-kcal-3" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                        <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
+                        <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
+                        <div><label class="block text-sm font-medium text-gray-700">年齡</label><input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">性別</label>
+                            <select id="gender" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"><option value="male">男性</option><option value="female">女性</option></select>
                         </div>
-                    </div>
-                </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">活動量</label>
+                            <select id="activity-level" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                                <option value="1.2">久坐 (BMR x 1.2)</option>
+                                <option value="1.375">輕度活動 (BMR x 1.375)</option>
+                                <option value="1.55">中度活動 (BMR x 1.55)</option>
+                                <option value="1.725">高度活動 (BMR x 1.725)</option>
+                                <option value="1.9">極高度活動 (BMR x 1.9)</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-emerald-50 p-3 rounded-lg"><p class="text-sm">基礎代謝率 (BMR)</p><p id="bmr-display" class="text-2xl font-bold text-emerald-600">---</p></div>
+                            <div class="bg-blue-50 p-3 rounded-lg"><p class="text-sm">每日總消耗 (TDEE)</p><p id="tdee-display" class="text-2xl font-bold text-blue-600">---</p></div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">設定每日熱量目標</label>
+                            <div id="goal-options" class="grid grid-cols-3 gap-2 mt-2">
+                                <button data-goal-type="maintain" class="goal-button border border-gray-300 rounded-md p-2 text-sm">維持體重<span class="block font-bold">---</span></button>
+                                <button data-goal-type="mild_loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">溫和減重<span class="block font-bold">---</span><span id="mild-loss-estimate" class="text-xs text-gray-500 mt-1"></span></button>
+                                <button data-goal-type="loss" class="goal-button border border-gray-300 rounded-md p-2 text-sm">積極減重<span class="block font-bold">---</span><span id="loss-estimate" class="text-xs text-gray-500 mt-1"></span></button>
+                            </div>
+                            <input type="hidden" id="target-calories">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">設定每日飲水目標 (c.c.)</label>
+                            <p id="water-suggestion" class="text-xs text-gray-500 mb-1"></p>
+                            <input type="number" id="water-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標</label>
+                            <div class="relative flex items-center gap-2 mt-1">
+                                <textarea id="exercise-goal-text" class="profile-input tall-input block w-full border-gray-300 rounded-md pr-8" rows="1" placeholder="點擊下方按鈕新增運動"></textarea>
+                                <button onclick="clearProfileExerciseGoal()" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600" style="left: auto; right: calc(33.33% + 1rem);" aria-label="清除運動目標">
+                                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                                <input type="number" id="exercise-goal" class="profile-input tall-input block w-1/3 border-gray-300 rounded-md" placeholder="kcal">
+                            </div>
+                            <p id="exercise-goal-estimate" class="text-xs text-gray-500 mt-1 font-semibold"></p>
+                            <div class="p-2 bg-gray-100 rounded-md mt-2">
+                                <p class="text-xs text-gray-600 mb-2">點擊下方按鈕，快速累加運動量來設定目標：</p>
+                                <div id="profile-quick-add-exercise" class="flex flex-wrap gap-2">
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">設定每日燃脂膠囊目標 (包)</label>
+                            <input type="number" id="capsule-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium">個人備註</label>
+                            <textarea id="personal-notes" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" rows="3" placeholder="例如：對花生過敏、不吃牛肉"></textarea>
+                        </div>
+                        
+                        <div class="space-y-3 pt-4 border-t">
+                            <h3 class="text-lg font-bold text-gray-800">設定常用運動</h3>
+                            <p class="text-sm text-gray-600">在此設定您常用的運動，輸入後將自動儲存，並顯示在「每日記錄」頁面作為快捷按鈕。</p>
+                            <div class="space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="user-exercise-name-1" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 1 名稱">
+                                    <input type="number" id="user-exercise-kcal-1" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="user-exercise-name-2" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 2 名稱">
+                                    <input type="number" id="user-exercise-kcal-2" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="user-exercise-name-3" class="user-exercise-input user-exercise-name-input profile-input block w-2/3 border-gray-300 rounded-md" placeholder="運動 3 名稱">
+                                    <input type="number" id="user-exercise-kcal-3" class="user-exercise-input user-exercise-kcal-input profile-input block w-1/3 border-gray-300 rounded-md" placeholder="消耗 kcal">
+                                </div>
+                            </div>
+                        </div>
+                        </div>
 
+                    <div id="questionnaire-sub-tab" class="hidden space-y-4">
+                        <div class="space-y-2 text-center">
+                            <h2 class="text-2xl font-bold text-emerald-600">背景探索問卷</h2>
+                            <p class="text-sm text-gray-600">為了 100% 為您量身打造方案，請讓我們深入了解您！</p>
+                        </div>
+
+                        <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                            <h3 class="font-bold text-lg text-gray-800">🏃 Part 2：生活方式與作息</h3>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">7. 您的職業性質比較偏向？</label>
+                                <select id="q7-occupation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                    <option value="" disabled selected>請選擇...</option>
+                                    <option value="A">A. 辦公室工作 (長時間久坐)</option>
+                                    <option value="B">B. 服務業/教職 (長時間站立或走動)</option>
+                                    <option value="C">C. 體力勞動工作</option>
+                                    <option value="D">D. 家管/自由業 (作息較彈性)</option>
+                                    <option value="E">E. 其他</option>
+                                </select>
+                                <input type="text" id="q7-occupation-other" class="mt-2 hidden w-full rounded-md border-gray-300" placeholder="請說明您的職業性質">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">8. 您的平均睡眠時數大約是幾小時？</label>
+                                <input type="number" id="q8-sleep-hours" class="mt-1 block w-full rounded-md border-gray-300" placeholder="請輸入數字，例如: 7">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">9. 您目前的運動習慣？</label>
+                                <div class="mt-2 space-y-2">
+                                    <label class="flex items-center"><input type="radio" name="q9-exercise-habit" value="A" class="h-4 w-4 text-emerald-600 border-gray-300"> <span class="ml-2">A. 幾乎不運動</span></label>
+                                    <label class="flex items-center"><input type="radio" name="q9-exercise-habit" value="B" class="h-4 w-4 text-emerald-600 border-gray-300"> <span class="ml-2">B. 每週1-2天</span></label>
+                                    <label class="flex items-center"><input type="radio" name="q9-exercise-habit" value="C" class="h-4 w-4 text-emerald-600 border-gray-300"> <span class="ml-2">C. 每週3-4天</span></label>
+                                    <label class="flex items-center"><input type="radio" name="q9-exercise-habit" value="D" class="h-4 w-4 text-emerald-600 border-gray-300"> <span class="ml-2">D. 每週5天以上</span></label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">10. 您給自己目前的壓力指數打幾分？ (1-10分)</label>
+                                <div class="flex items-center gap-4 mt-1">
+                                    <input type="range" id="q10-stress-level" min="1" max="10" value="5" class="w-full">
+                                    <div class="font-semibold text-emerald-600 w-12 text-center" id="q10-stress-value">5 分</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                             <h3 class="font-bold text-lg text-gray-800">🥗 Part 3：飲食習慣</h3>
+                             </div>
+                        <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                             <h3 class="font-bold text-lg text-gray-800">❤️ Part 4：健康狀況</h3>
+                             </div>
+                        <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                             <h3 class="font-bold text-lg text-gray-800">✨ Part 5：動機與目標</h3>
+                             </div>
+
+                        <div class="pt-4">
+                            <button id="submit-questionnaire-btn" class="w-full rounded-lg bg-emerald-600 px-5 py-3 text-lg font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                                完成！生成我的 AI 個人化分析
+                            </button>
+                        </div>
+                        </div>
+
+                    <div id="ai-analysis-sub-tab" class="hidden space-y-4">
+                        <div class="bg-white p-4 rounded-lg shadow-sm min-h-[300px]">
+                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">AI 個人化分析報告</h3>
+                            <div id="ai-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
+                                <p class="text-center text-gray-500">您尚未生成分析報告。<br>請先至「背景探索」分頁完成問卷。</p>
+                            </div>
+                        </div>
+                        </div>
+                </div>
             </div>
 
             <div id="log-tab" class="hidden space-y-4">
@@ -315,8 +393,8 @@
                         <label class="block text-sm font-medium text-gray-700">今日使用燃脂膠囊 (包)</label>
                         <div class="flex items-center gap-2 mt-1">
                                 <div class="relative w-full">
-                                 <input data-field="capsule_qty" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="請輸入包數">
-                                 <button class="clear-input-btn" data-target="capsule_qty"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                                    <input data-field="capsule_qty" type="number" class="log-input tall-input block w-full border-gray-300 rounded-md pr-8 text-center" placeholder="請輸入包數">
+                                    <button class="clear-input-btn" data-target="capsule_qty"><svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                                 </div>
                                 <button id="quick-add-capsule" class="quick-add-btn whitespace-nowrap">+1 包</button>
                         </div>
@@ -325,7 +403,7 @@
             </div>
 
             <div id="trends-tab" class="hidden space-y-4">
-                 <div class="flex justify-between items-center flex-wrap gap-2">
+                <div class="flex justify-between items-center flex-wrap gap-2">
                     <div id="membership-dates-display-trends" class="text-sm px-3 py-1 rounded-full"></div>
                     <p id="last-updated-trends" class="text-xs text-gray-400"></p>
                 </div>
@@ -345,62 +423,63 @@
                 </div>
                 <div class="bg-white p-4 rounded-lg shadow">
                                         <div class="flex flex-col items-center gap-2 mb-4">
-                                             <div class="flex justify-center flex-wrap gap-2">
-                                                 <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
-                                                 <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
-                                                 <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
-                                             </div>
-                                             <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                                                 <div class="flex items-center gap-1">
+                                            <div class="flex justify-center flex-wrap gap-2">
+                                                <button onclick="updateChartRange('7days', this)" class="range-btn active bg-emerald-500 text-white px-3 py-1 text-xs rounded-full">最近7天</button>
+                                                <button onclick="updateChartRange('14days', this)" class="range-btn bg-gray-200 px-3 py-1 text-xs rounded-full">最近14天</button>
+                                                <button id="membership-range-btn" onclick="updateChartRange('membership_period', this)" class="range-btn hidden bg-gray-200 px-3 py-1 text-xs rounded-full">28天會籍</button>
+                                            </div>
+                                            <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                                                <div class="flex items-center gap-1">
                                                     <label for="start-date-picker" class="text-xs">自訂開始日:</label>
                                                     <input type="date" id="start-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                                                 </div>
-                                                 <div class="flex items-center gap-1">
+                                                </div>
+                                                <div class="flex items-center gap-1">
                                                     <label for="end-date-picker" class="text-xs">自訂結束日:</label>
                                                     <input type="date" id="end-date-picker" class="border border-gray-300 rounded-md p-1 text-xs w-32">
-                                                 </div>
-                                             </div>
-                                             </div>
+                                                </div>
+                                            </div>
+                                            </div>
                                         <canvas id="trendsChart"></canvas>
                                         
                                         <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                                             <p class="text-sm font-semibold text-center text-gray-700 mb-3">期間平均數據</p>
-                                             <div id="averages-display" class="grid grid-cols-2 gap-3 text-center">
-                                                 <div class="bg-white p-2 rounded-md shadow-sm">
-                                                     <p class="text-xs text-gray-500">平均體重</p>
-                                                     <p id="avg-weight" class="text-lg font-bold text-emerald-600">N/A</p>
-                                                 </div>
-                                                 <div class="bg-white p-2 rounded-md shadow-sm">
-                                                     <p class="text-xs text-gray-500">日均熱量</p>
-                                                     <p id="avg-calories" class="text-lg font-bold text-red-500">N/A</p>
-                                                 </div>
-                                                 <div class="bg-white p-2 rounded-md shadow-sm">
-                                                     <p class="text-xs text-gray-500">日均飲水</p>
-                                                     <p id="avg-water" class="text-lg font-bold text-blue-500">N/A</p>
-                                                 </div>
-                                                 <div class="bg-white p-2 rounded-md shadow-sm">
-                                                     <p class="text-xs text-gray-500">日均膠囊</p>
-                                                     <p id="avg-capsule" class="text-lg font-bold text-orange-500">N/A</p>
-                                                 </div>
-                                             </div>
+                                            <p class="text-sm font-semibold text-center text-gray-700 mb-3">期間平均數據</p>
+                                            <div id="averages-display" class="grid grid-cols-2 gap-3 text-center">
+                                                <div class="bg-white p-2 rounded-md shadow-sm">
+                                                    <p class="text-xs text-gray-500">平均體重</p>
+                                                    <p id="avg-weight" class="text-lg font-bold text-emerald-600">N/A</p>
+                                                </div>
+                                                <div class="bg-white p-2 rounded-md shadow-sm">
+                                                    <p class="text-xs text-gray-500">日均熱量</p>
+                                                    <p id="avg-calories" class="text-lg font-bold text-red-500">N/A</p>
+                                                </div>
+                                                <div class="bg-white p-2 rounded-md shadow-sm">
+                                                    <p class="text-xs text-gray-500">日均飲水</p>
+                                                    <p id="avg-water" class="text-lg font-bold text-blue-500">N/A</p>
+                                                </div>
+                                                <div class="bg-white p-2 rounded-md shadow-sm">
+                                                    <p class="text-xs text-gray-500">日均膠囊</p>
+                                                    <p id="avg-capsule" class="text-lg font-bold text-orange-500">N/A</p>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div class="flex justify-center gap-4 mt-4">
-                                             <button id="show-all-btn" class="text-xs text-blue-600 hover:underline">全部顯示</button>
-                                             <button id="hide-all-btn" class="text-xs text-blue-600 hover:underline">全部隱藏</button>
+                                            <button id="show-all-btn" class="text-xs text-blue-600 hover:underline">全部顯示</button>
+                                            <button id="hide-all-btn" class="text-xs text-blue-600 hover:underline">全部隱藏</button>
                                         </div>
 
                                         <div id="chart-toggles" class="grid grid-cols-2 md:flex md:flex-wrap justify-center gap-x-4 gap-y-2 mt-2 text-sm">
-                                                   <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="0" checked> 體重</label>
-                                                   <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
-                                                   <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
-                                                   <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
-                                                   <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="4" checked> 燃脂膠囊</label>
+                                                <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="0" checked> 體重</label>
+                                                <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="1" checked> 熱量攝取</label>
+                                                <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="2" checked> 飲水</label>
+                                                <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="3" checked> 運動消耗</label>
+                                                <label class="flex items-center gap-1"><input type="checkbox" class="chart-toggle" data-dataset-index="4" checked> 燃脂膠囊</label>
                                         </div>
-                           </div>
+                                </div>
             </div>
+
         </div>
-    </div>
+        </div>
     
     <div id="toast" class="toast"></div>
 
