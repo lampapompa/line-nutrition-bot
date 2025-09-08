@@ -268,35 +268,101 @@ async function loadLogDataForDate(date) {
     }
 }
 
-// ===== ▼▼▼ 1. 新增：處理問卷提交與AI分析的核心函式 ▼▼▼ =====
+// ===== ▼▼▼ 1. 新增：處理問卷提交與驗證的核心函式 ▼▼▼ =====
 async function handleQuestionnaireSubmit() {
-    // 顯示一個處理中的提示，避免使用者重複點擊
     const submitButton = document.getElementById('submit-questionnaire-btn');
+    const questionnaireContainer = document.getElementById('questionnaire-sub-tab');
+
+    // --- Step 1: 必填驗證 ---
+    // ===== ▼▼▼ 【修改】修正並補完 requiredFields 中的所有必填欄位 ▼▼▼ =====
+    const requiredFields = [
+        { id: 'q1-occupation-group', type: 'radio', name: 'q1-occupation', message: '請選擇您的職業性質' },
+        { id: 'q2-sleep-hours', type: 'number', message: '請輸入您的平均睡眠時數' },
+        { id: 'q3-exercise-habit-group', type: 'radio', name: 'q3-exercise-habit', message: '請選擇您的運動習慣' },
+        { id: 'q5-meal-source-group', type: 'radio', name: 'q5-meal-source', message: '請選擇您的三餐來源' },
+        { id: 'q6-water-intake', type: 'number', message: '請輸入您的喝水量' },
+        { id: 'q7-other-drinks-group', type: 'radio', name: 'q7-other-drinks', message: '請選擇您常喝的飲品' },
+        { id: 'q8-snacks-habit-group', type: 'radio', name: 'q8-snacks-habit', message: '請選擇您的點心習慣' },
+    ];
+    // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
+
+    let firstErrorElement = null;
+    let allValid = true;
+
+    // 清除舊的錯誤提示
+    questionnaireContainer.querySelectorAll('.question-item.border-red-500').forEach(el => el.classList.remove('border-red-500', 'border-2'));
+    questionnaireContainer.querySelectorAll('input.border-red-500').forEach(el => el.classList.remove('border-red-500', 'border-2'));
+
+    for (const field of requiredFields) {
+        let isFieldValid = false;
+        let errorElement = null;
+
+        if (field.type === 'radio') {
+            const selected = document.querySelector(`input[name="${field.name}"]:checked`);
+            if (selected) {
+                isFieldValid = true;
+            }
+            errorElement = document.getElementById(field.id); // 指向選項群組的容器
+        } else if (field.type === 'number' || field.type === 'text') {
+            const element = document.getElementById(field.id);
+            if (element && element.value.trim() !== '') {
+                isFieldValid = true;
+            }
+            errorElement = element;
+        }
+        
+        if (!isFieldValid) {
+            allValid = false;
+            if (errorElement) {
+                const questionItem = errorElement.closest('.question-item');
+                if (questionItem) {
+                    questionItem.classList.add('border-red-500', 'border-2');
+                } else {
+                    errorElement.classList.add('border-red-500', 'border-2');
+                }
+
+                if (!firstErrorElement) {
+                    firstErrorElement = questionItem || errorElement;
+                }
+            }
+        }
+    }
+
+    if (!allValid) {
+        showToast('哎呀，還有幾個問題沒填完喔！');
+        if (firstErrorElement) {
+            firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return; 
+    }
+    
+    // --- Step 2: 如果驗證通過，執行提交 ---
     const originalButtonText = submitButton.innerHTML;
     submitButton.disabled = true;
-    submitButton.innerHTML = `
-        <svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-    `;
+    submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
     try {
-        // Step 1: 收集所有問卷答案
+        const getRadioValue = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value || null;
+        const getCheckboxValues = (name) => Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(cb => cb.value);
+
         const questionnaireData = {
-            // Part 2
-            q7_occupation: document.getElementById('q7-occupation').value,
-            q7_occupation_other: document.getElementById('q7-occupation-other').value,
-            q8_sleep_hours: document.getElementById('q8-sleep-hours').value,
-            q9_exercise_habit: document.querySelector('input[name="q9-exercise-habit"]:checked')?.value || null,
-            q10_stress_level: document.getElementById('q10-stress-level').value,
-            // Part 3 (您需要加入對應的欄位ID)
-            q11_meal_source: document.querySelector('input[name="q11-meal-source"]:checked')?.value || null,
-            // ... 收集 Part 3, 4, 5 的所有答案 ...
+            q1_occupation: getRadioValue('q1-occupation'),
+            q1_occupation_other: document.getElementById('q1-occupation-other').value,
+            q2_sleep_hours: document.getElementById('q2-sleep-hours').value,
+            q3_exercise_habit: getRadioValue('q3-exercise-habit'),
+            q4_stress_level: document.getElementById('q4-stress-level').value,
+            q5_meal_source: getRadioValue('q5-meal-source'),
+            q6_water_intake: document.getElementById('q6-water-intake').value,
+            q7_other_drinks: getRadioValue('q7-other-drinks'),
+            q8_snacks_habit: getRadioValue('q8-snacks-habit'),
+            q9_health_conditions: getCheckboxValues('q9-health-condition'),
+            q9_allergy_detail: document.getElementById('q9-allergy-detail').value,
+            q9_other_condition_detail: document.getElementById('q9-other-condition-detail').value,
+            q10_past_challenges: document.getElementById('q10-past-challenges').value,
+            q11_motivation: document.getElementById('q11-motivation').value,
+            q12_expected_change: document.getElementById('q12-expected-change').value,
         };
 
-        // Step 2: 呼叫後端 API，將問卷資料送過去
-        // 注意：這個 API (/api/summarize-questionnaire) 是我們下一步需要在 apiserver.py 中建立的
         const response = await fetchAPI('/api/summarize-questionnaire', {
             method: 'POST',
             body: JSON.stringify({
@@ -305,13 +371,10 @@ async function handleQuestionnaireSubmit() {
             })
         });
 
-        // Step 3: 處理後端回傳的 AI 總結
         if (response && response.ai_summary) {
             const aiAnalysisContainer = document.getElementById('ai-analysis-content');
-            aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>'); // 將換行符轉為 <br>
+            aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>');
             showToast('個人化分析已生成！');
-
-            // Step 4: 自動切換到 AI 分析小分頁
             switchSubTab('ai-analysis');
         } else {
             throw new Error('後端未回傳有效的 AI 總結');
@@ -320,10 +383,7 @@ async function handleQuestionnaireSubmit() {
     } catch (error) {
         console.error("提交問卷或生成AI分析失敗:", error);
         showToast('分析生成失敗，請稍後再試');
-        // 在 AI 分析頁顯示錯誤訊息
-        document.getElementById('ai-analysis-content').textContent = '無法生成您的個人化分析報告，請聯繫您的營養師。';
     } finally {
-        // 無論成功或失敗，都恢復按鈕的原始狀態
         submitButton.disabled = false;
         submitButton.innerHTML = originalButtonText;
     }
@@ -425,27 +485,22 @@ function hideAllChartDatasets() {
 
 // ===== ▼▼▼ 2. 修改：switchTab 函式，處理大分頁邏輯 ▼▼▼ =====
 function switchTab(tabName) {
-    // 隱藏所有大分頁內容
     ['profile-main-tab', 'log-tab', 'trends-tab'].forEach(tabId => {
         const tabElement = document.getElementById(tabId);
         if (tabElement) tabElement.classList.add('hidden');
     });
 
-    // 移除所有大分頁按鈕的 active 狀態
     document.querySelectorAll('.main-tab-button').forEach(button => {
-        button.classList.remove('active', 'text-gray-900');
+        button.classList.remove('active');
     });
 
-    // 顯示被點擊的大分頁內容
     const targetTabId = (tabName === 'profile' ? 'profile-main-tab' : tabName + '-tab');
     const targetTabElement = document.getElementById(targetTabId);
     if (targetTabElement) targetTabElement.classList.remove('hidden');
 
-    // 設定被點擊的大分頁按鈕為 active 狀態
-    const activeButton = document.querySelector(`button[onclick="switchTab('${tabName}')"]`);
-    if (activeButton) activeButton.classList.add('active', 'text-gray-900');
+    const activeButton = document.querySelector(`.main-tab-button[data-tab="${tabName}"]`);
+    if (activeButton) activeButton.classList.add('active');
 
-    // 根據不同的大分頁執行特定邏輯
     if (tabName === 'trends') {
         document.getElementById('calc-footnote').style.display = 'none';
         updateTrendsMembershipInfo();
@@ -456,7 +511,6 @@ function switchTab(tabName) {
     } else if (tabName === 'profile') {
         document.getElementById('calc-footnote').style.display = 'block';
         updateMembershipBanner();
-        // **重要**：當切換到「我的檔案」大分頁時，預設顯示第一個小分頁「目標設定」
         switchSubTab('goal-setting');
     } else {
         document.getElementById('calc-footnote').style.display = 'none';
@@ -467,23 +521,19 @@ function switchTab(tabName) {
 
 // ===== ▼▼▼ 3. 新增：switchSubTab 函式，處理「我的檔案」底下的小分頁切換 ▼▼▼ =====
 function switchSubTab(subTabName) {
-    // 隱藏所有小分頁內容
     ['goal-setting-sub-tab', 'questionnaire-sub-tab', 'ai-analysis-sub-tab'].forEach(subTabId => {
         const subTabElement = document.getElementById(subTabId);
         if (subTabElement) subTabElement.classList.add('hidden');
     });
 
-    // 移除所有小分頁按鈕的 active 狀態
     document.querySelectorAll('.sub-tab-button').forEach(button => {
-        button.classList.remove('active'); // 假設 active 狀態的 CSS class 是 'active'
+        button.classList.remove('active');
     });
 
-    // 顯示被點擊的小分頁內容
     const targetSubTabElement = document.getElementById(subTabName + '-sub-tab');
     if (targetSubTabElement) targetSubTabElement.classList.remove('hidden');
 
-    // 設定被點擊的小分頁按鈕為 active 狀態
-    const activeSubButton = document.querySelector(`button[onclick="switchSubTab('${subTabName}')"]`);
+    const activeSubButton = document.querySelector(`.sub-tab-button[data-sub-tab="${subTabName}"]`);
     if (activeSubButton) activeSubButton.classList.add('active');
 }
 // ===== ▲▲▲ 3. 新增結束 ▲▲▲ =====
@@ -893,6 +943,50 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
+// ===== ▼▼▼ 【修改】此函式被重寫以同時處理顏色和文字提示 ▼▼▼ =====
+function updateQuestionnaireIndicator(inputElement) {
+    const questionItem = inputElement.closest('.question-item');
+    if (!questionItem) return;
+
+    const indicator = questionItem.querySelector('.selected-answer-indicator');
+    if (!indicator) return;
+
+    const inputType = inputElement.getAttribute('type');
+    const inputName = inputElement.getAttribute('name');
+
+    // --- 處理視覺樣式 ---
+    if (inputType === 'radio') {
+        // 先移除同一組所有選項的 'selected' class
+        const allChoiceButtonsInGroup = questionItem.querySelectorAll('.choice-button');
+        allChoiceButtonsInGroup.forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        // 只在被選中的選項上加入 'selected' class
+        if (inputElement.checked) {
+            const parentLabel = inputElement.closest('.choice-button');
+            if (parentLabel) {
+                parentLabel.classList.add('selected');
+            }
+        }
+    } else if (inputType === 'checkbox') {
+        // 對於 checkbox，只切換當前點擊的選項
+        const parentLabel = inputElement.closest('.choice-button');
+        if (parentLabel) {
+            parentLabel.classList.toggle('selected', inputElement.checked);
+        }
+    }
+
+    // --- 處理文字提示 ---
+    if (inputType === 'radio') {
+        indicator.textContent = inputElement.value;
+    } else if (inputType === 'checkbox') {
+        const allCheckboxes = questionItem.querySelectorAll(`input[name="${inputName}"]:checked`);
+        const values = Array.from(allCheckboxes).map(cb => cb.value);
+        indicator.textContent = values.join(', ');
+    }
+}
+// ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
+
 // ===== ▼▼▼ 4. 修改：setupEventListeners 函式，加入新功能事件綁定 ▼▼▼ =====
 function setupEventListeners() {
     // ---- 原有事件綁定 (完全不變) ----
@@ -1060,6 +1154,35 @@ function setupEventListeners() {
     if (submitBtn) {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
+
+    // ===== ▼▼▼ 【修改】將原本的 change 事件改為 click 事件以獲得更佳的反饋體驗 ▼▼▼ =====
+    const questionnaireTab = document.getElementById('questionnaire-sub-tab');
+    if (questionnaireTab) {
+        questionnaireTab.addEventListener('click', (event) => {
+            const targetLabel = event.target.closest('.choice-button');
+            if (!targetLabel) return;
+
+            const inputElement = targetLabel.querySelector('input[type="radio"], input[type="checkbox"]');
+            if (inputElement) {
+                // 手動觸發 input 的選中狀態，以確保 change 事件能被正確觸發
+                if (inputElement.type === 'radio' && !inputElement.checked) {
+                    inputElement.checked = true;
+                    // 手動觸發 change 事件，因為程式化更改 checked 狀態不會自動觸發
+                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (inputElement.type === 'checkbox') {
+                    inputElement.checked = !inputElement.checked;
+                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        });
+
+        questionnaireTab.addEventListener('change', (event) => {
+            if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
+                updateQuestionnaireIndicator(event.target);
+            }
+        });
+    }
+    // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 }
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
