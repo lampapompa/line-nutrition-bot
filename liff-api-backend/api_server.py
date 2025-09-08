@@ -134,7 +134,7 @@ def init_db():
             'q_past_challenges': 'TEXT',
             'q_motivation': 'TEXT',
             'q_expected_change': 'TEXT',
-            'ai_profile_summary': 'TEXT' # 儲存 AI 總結的欄位
+            'ai_profile_summary': 'TEXT', # 儲存 AI 總結的欄位（注意這裡要加逗號）
             'ai_analysis_timestamp': 'TIMESTAMPTZ',
             'user_card_cache': 'JSONB'
         }
