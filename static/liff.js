@@ -1351,8 +1351,6 @@ async function main() {
         
         // ▼▼▼ 加入偵錯 ▼▼▼
         alert(`取得的參數:\ntargetUserId: ${targetUserIdFromUrl}\noperatorId: ${operatorIdFromUrl}`);
-targetUserId: ${targetUserIdFromUrl}
-operatorId: ${operatorIdFromUrl}`);
         
         if (targetUserIdFromUrl && operatorIdFromUrl) {
             isViewingAsAdmin = true;
