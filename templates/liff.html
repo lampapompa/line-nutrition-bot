@@ -15,7 +15,6 @@
         .main-tab-button.active { border-bottom-color: #10B981; color: #059669; font-weight: 700; }
         .sub-tab-button.active { background-color: #10B981; color: white; }
         
-        /* ===== ▼▼▼ START：UI 優化樣式 (已移除手風琴樣式) ▼▼▼ ===== */
         .choice-button {
             display: block;
             width: 100%;
@@ -56,7 +55,6 @@
         input[type=range]::-moz-range-thumb {
             height: 20px; width: 20px; border-radius: 50%; background: #10B981; cursor: pointer;
         }
-        /* ===== ▲▲▲ END：UI 優化樣式 ▲▲▲ ===== */
 
         input, select, textarea { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -153,9 +151,9 @@
         
         <div class="border-b border-gray-200 sticky top-0 bg-gray-50 z-10">
             <nav class="flex justify-around -mb-px" aria-label="Tabs">
-                <button onclick="switchTab('profile')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">我的檔案</button>
-                <button onclick="switchTab('log')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">每日記錄</button>
-                <button onclick="switchTab('trends')" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">數據分析</button>
+                <button onclick="switchTab('profile')" data-tab="profile" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">我的檔案</button>
+                <button onclick="switchTab('log')" data-tab="log" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">每日記錄</button>
+                <button onclick="switchTab('trends')" data-tab="trends" class="main-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500">數據分析</button>
             </nav>
         </div>
         <div id="tab-content-wrapper">
@@ -276,9 +274,9 @@
                         <div class="space-y-6">
                             <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                                 <h3 class="font-bold text-lg text-gray-800">🏃 Part 1：生活方式與作息</h3>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">1. 您的職業性質比較偏向？</label>
-                                    <div class="space-y-2" id="q1-occupation">
+                                    <div class="space-y-2" id="q1-occupation-group">
                                         <label class="choice-button"><input type="radio" name="q1-occupation" value="A"> A. 辦公室工作 (長時間久坐)</label>
                                         <label class="choice-button"><input type="radio" name="q1-occupation" value="B"> B. 服務業/教職 (長時間站立或走動)</label>
                                         <label class="choice-button"><input type="radio" name="q1-occupation" value="C"> C. 體力勞動工作</label>
@@ -287,20 +285,20 @@
                                     </div>
                                     <input type="text" id="q1-occupation-other" class="mt-2 hidden w-full rounded-md border-gray-300" placeholder="請說明您的職業性質">
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">2. 您的平均睡眠時數大約是幾小時？</label>
                                     <input type="number" id="q2-sleep-hours" class="mt-1 block w-full rounded-md border-gray-300" placeholder="請輸入數字，例如: 7">
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">3. 您目前的運動習慣？</label>
-                                    <div class="space-y-2" id="q3-exercise-habit">
+                                    <div class="space-y-2" id="q3-exercise-habit-group">
                                         <label class="choice-button"><input type="radio" name="q3-exercise-habit" value="A"> A. 幾乎不運動</label>
                                         <label class="choice-button"><input type="radio" name="q3-exercise-habit" value="B"> B. 每週1-2天</label>
                                         <label class="choice-button"><input type="radio" name="q3-exercise-habit" value="C"> C. 每週3-4天</label>
                                         <label class="choice-button"><input type="radio" name="q3-exercise-habit" value="D"> D. 每週5天以上</label>
                                     </div>
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">4. 您給自己目前的壓力指數打幾分？</label>
                                     <div class="mt-2 p-2 rounded-lg" id="q4-stress-level-bg">
                                         <input type="range" id="q4-stress-level" min="1" max="10" value="5" class="w-full">
@@ -315,21 +313,21 @@
 
                             <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                                 <h3 class="font-bold text-lg text-gray-800">🥗 Part 2：飲食習慣</h3>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">5. 您的三餐主要來源？</label>
-                                    <div class="space-y-2" id="q5-meal-source">
+                                    <div class="space-y-2" id="q5-meal-source-group">
                                         <label class="choice-button"><input type="radio" name="q5-meal-source" value="A"> A. 幾乎外食</label>
                                         <label class="choice-button"><input type="radio" name="q5-meal-source" value="B"> B. 多為自己或家人烹煮</label>
                                         <label class="choice-button"><input type="radio" name="q5-meal-source" value="C"> C. 外食與自煮各半</label>
                                     </div>
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">6. 您平均每天喝多少「白開水」？ (cc)</label>
                                     <input type="number" id="q6-water-intake" class="mt-1 block w-full rounded-md border-gray-300" placeholder="請輸入數字，例如: 2000">
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">7. 除了水，您最常喝的飲品是？</label>
-                                    <div class="space-y-2" id="q7-other-drinks">
+                                    <div class="space-y-2" id="q7-other-drinks-group">
                                         <label class="choice-button"><input type="radio" name="q7-other-drinks" value="A"> A. 無糖茶或咖啡</label>
                                         <label class="choice-button"><input type="radio" name="q7-other-drinks" value="B"> B. 含糖飲料 (手搖飲、汽水等)</label>
                                         <label class="choice-button"><input type="radio" name="q7-other-drinks" value="C"> C. 酒精</label>
@@ -337,9 +335,9 @@
                                         <label class="choice-button"><input type="radio" name="q7-other-drinks" value="E"> E. 幾乎只喝水</label>
                                     </div>
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">8. 您有吃點心或宵夜的習慣嗎？</label>
-                                    <div class="space-y-2" id="q8-snacks-habit">
+                                    <div class="space-y-2" id="q8-snacks-habit-group">
                                         <label class="choice-button"><input type="radio" name="q8-snacks-habit" value="A"> A. 幾乎沒有</label>
                                         <label class="choice-button"><input type="radio" name="q8-snacks-habit" value="B"> B. 偶爾吃 (一週1-3次)</label>
                                         <label class="choice-button"><input type="radio" name="q8-snacks-habit" value="C"> C. 經常吃 (一週4次以上)</label>
@@ -349,9 +347,9 @@
                             
                             <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                                 <h3 class="font-bold text-lg text-gray-800">❤️ Part 3：健康狀況</h3>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700 mb-2">9. 您目前是否有以下狀況？ (可複選)</label>
-                                    <div class="space-y-2" id="q9-health-conditions">
+                                    <div class="space-y-2" id="q9-health-conditions-group">
                                         <label class="choice-button"><input type="checkbox" name="q9-health-condition" value="A"> A. 高血壓</label>
                                         <label class="choice-button"><input type="checkbox" name="q9-health-condition" value="B"> B. 高血脂</label>
                                         <label class="choice-button"><input type="checkbox" name="q9-health-condition" value="C"> C. 高血糖/糖尿病</label>
@@ -370,22 +368,23 @@
                                 </div>
                             </div>
 
-                            <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                             <div class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                                 <h3 class="font-bold text-lg text-gray-800">✨ Part 4：動機與目標</h3>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">10. 過去是否有過減重經驗？可以簡述一下當時遇到的最大挑戰是什麼嗎？</label>
                                     <textarea id="q10-past-challenges" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="誠實地告訴我，這能幫助我更好地協助您"></textarea>
                                 </div>
-                                <div>
+                                <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">11. 這次下定決心，最主要、最核心的「原因」是什麼？ (非常重要)</label>
                                     <textarea id="q11-motivation" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="例如：為了健康、為了穿上某件衣服、想更有自信..."></textarea>
                                 </div>
-                                 <div>
+                                 <div class="question-item">
                                     <label class="block text-sm font-medium text-gray-700">12. 想像一下，28天後，您成功了。除了體重計上的數字，您最希望自己有什麼樣的「改變」或「感受」？</label>
                                     <textarea id="q12-expected-change" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="例如：精神變好、更有活力、穿衣服更好看..."></textarea>
                                 </div>
                             </div>
                         </div>
+
                         <div class="pt-4">
                             <button id="submit-questionnaire-btn" class="w-full rounded-lg bg-emerald-600 px-5 py-3 text-lg font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                                 完成！生成我的 AI 個人化分析
