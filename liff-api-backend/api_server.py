@@ -1,12 +1,14 @@
 import os
 import psycopg2
 import psycopg2.extras
-# [ADDED] 引入 Flask 的 g 物件用於儲存單次請求的連線，以及引入連線池
 from flask import Flask, request, jsonify, render_template, g
 from flask_cors import CORS
 from psycopg2 import pool
 from datetime import datetime, timedelta, date
 import pytz
+# ===== ▼▼▼ 1. 新增：引入 OpenAI 套件 ▼▼▼ =====
+from openai import OpenAI
+# ===== ▲▲▲ 1. 新增結束 ▲▲▲ =====
 
 # --- 初始化設定 ---
 app = Flask(__name__)
@@ -16,9 +18,18 @@ TAIPEI_TZ = pytz.timezone('Asia/Taipei')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 ADMIN_USER_IDS_str = os.environ.get('ADMIN_USER_IDS', '')
 ADMIN_USER_IDS = [uid.strip() for uid in ADMIN_USER_IDS_str.split(',') if uid.strip()]
+# ===== ▼▼▼ 2. 新增：讀取 OpenAI API Key 並初始化客戶端 ▼▼▼ =====
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+try:
+    if not OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY 環境變數未設定")
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    print("OpenAI client 初始化成功。")
+except Exception as e:
+    print(f"OpenAI client 初始化失敗: {e}")
+    openai_client = None
+# ===== ▲▲▲ 2. 新增結束 ▲▲▲ =====
 
-# [ADDED] 建立全域的資料庫連線池
-# 伺服器啟動時，會預先建立 1 個連線，最多可擴展至 5 個連線
 try:
     connection_pool = psycopg2.pool.ThreadedConnectionPool(
         minconn=1,
@@ -32,8 +43,6 @@ except Exception as e:
     connection_pool = None
 
 # --- 資料庫輔助函式 ---
-# [MODIFIED] get_db_connection 現在會從連線池中取得連線
-# 並將其儲存在 Flask 的 g 物件中，確保在同一個請求中重複使用同一個連線
 def get_db_connection():
     if 'db_conn' not in g:
         if connection_pool:
@@ -42,20 +51,18 @@ def get_db_connection():
             raise Exception("資料庫連線池不可用。")
     return g.db_conn
 
-# [ADDED] 建立一個 teardown 函式，Flask 會在每次請求結束後自動呼叫它
-# 無論請求成功或失敗，它都會確保連線被安全地歸還到池中
 @app.teardown_appcontext
 def close_db_connection(e=None):
     db_conn = g.pop('db_conn', None)
     if db_conn is not None and connection_pool:
         connection_pool.putconn(db_conn)
 
+# ===== ▼▼▼ 3. 修改：init_db 函式，新增問卷相關欄位 ▼▼▼ =====
 def init_db():
     print("正在檢查並初始化資料庫...")
-    # [MODIFIED] init_db 現在也從 get_db_connection 獲取連線
     conn = get_db_connection()
     with conn.cursor() as cur:
-        # [新增 is_vip 欄位]
+        # user_profiles 表格維持原樣
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_profiles (
                 user_id VARCHAR(255) PRIMARY KEY,
@@ -74,6 +81,7 @@ def init_db():
                 service_termination_date TIMESTAMPTZ
             );
         ''')
+        # daily_logs 表格維持原樣
         cur.execute('''
             CREATE TABLE IF NOT EXISTS daily_logs (
                 id SERIAL PRIMARY KEY,
@@ -91,6 +99,7 @@ def init_db():
             );
         ''')
         
+        # user_exercises 表格維持原樣
         cur.execute('''
             CREATE TABLE IF NOT EXISTS user_exercises (
                 id SERIAL PRIMARY KEY,
@@ -102,12 +111,30 @@ def init_db():
             );
         ''')
 
+        # 檢查並新增欄位的邏輯
         profile_columns_to_check = {
             'admin_nickname': 'VARCHAR(255)',
             'membership_start_date': 'TIMESTAMPTZ',
             'service_termination_date': 'TIMESTAMPTZ',
             'exercise_goal_text': 'TEXT',
-            'is_vip': 'BOOLEAN DEFAULT FALSE' # [新增 is_vip 欄位檢查]
+            'is_vip': 'BOOLEAN DEFAULT FALSE',
+            # -- 問卷相關新欄位 --
+            'q_occupation': 'VARCHAR(255)',
+            'q_occupation_other': 'TEXT',
+            'q_sleep_hours': 'REAL',
+            'q_exercise_habit': 'VARCHAR(50)',
+            'q_stress_level': 'INTEGER',
+            'q_meal_source': 'VARCHAR(50)',
+            'q_daily_water': 'INTEGER',
+            'q_other_drinks': 'VARCHAR(50)',
+            'q_snacks_habit': 'VARCHAR(50)',
+            'q_health_conditions': 'TEXT',
+            'q_allergy_details': 'TEXT',
+            'q_other_illness': 'TEXT',
+            'q_past_challenges': 'TEXT',
+            'q_motivation': 'TEXT',
+            'q_expected_change': 'TEXT',
+            'ai_profile_summary': 'TEXT' # 儲存 AI 總結的欄位
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -128,20 +155,17 @@ def init_db():
 
     conn.commit()
     print("資料庫初始化檢查完成。")
+# ===== ▲▲▲ 3. 修改結束 ▲▲▲ =====
+
 
 # --- 權限與身份驗證輔助函式 ---
 def is_admin(user_id):
     return user_id in ADMIN_USER_IDS
 
 def get_user_status(user_profile):
-    """
-    根據使用者資料物件判斷其會員狀態。
-    返回一個代表狀態的字串。
-    """
     if not user_profile:
         return "Trial" 
 
-    # [修改] VIP 狀態優先判斷
     if user_profile.get('is_vip'):
         return "VIP"
 
@@ -153,27 +177,22 @@ def get_user_status(user_profile):
     if term_date and term_date <= now_utc:
         return "Terminated"
     if start_date and start_date > now_utc:
-        return "Reserved" # [文字修改] "Attention" -> "Reserved" (預約)
+        return "Reserved"
     if end_date and end_date >= now_utc:
         return "Active"
     if end_date and end_date < now_utc:
         return "Expired"
     
-    # [新增] 異常狀態判斷: 有結束日但沒有開始日
     if end_date and not start_date:
         return "Abnormal"
 
     return "Trial"
 
 def check_user_active(user_id):
-    """
-    檢查使用者是否可用服務，返回 (布林值, 狀態字串)
-    """
     if is_admin(user_id):
         return (True, "Admin")
 
     conn = get_db_connection()
-    # [修改] 增加查詢 is_vip
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute("SELECT membership_start_date, expiry_timestamp, service_termination_date, is_vip FROM user_profiles WHERE user_id = %s", (user_id,))
         user = cur.fetchone()
@@ -183,15 +202,9 @@ def check_user_active(user_id):
     
     return (is_active, status)
 
-# ******** 【新增的函式】 ********
-# 這是在這裡新增的函式，用來產生前端需要的 banner_info 物件
 def get_banner_info(user_profile):
-    """
-    根據使用者資料，產生前端 Banner 需要的文字和顏色 class。
-    """
     status = get_user_status(user_profile)
     
-    # 預設值
     banner_info = { "text": "會籍狀態不明", "color_class": "bg-gray-200 text-gray-800" }
 
     if status == "VIP":
@@ -205,9 +218,9 @@ def get_banner_info(user_profile):
                 days_remaining = delta.days
         
         if days_remaining is not None:
-                banner_info = { "text": f"會籍有效 (剩 {days_remaining} 天)", "color_class": "bg-green-200 text-green-800" }
+            banner_info = { "text": f"會籍有效 (剩 {days_remaining} 天)", "color_class": "bg-green-200 text-green-800" }
         else:
-                banner_info = { "text": "會籍有效", "color_class": "bg-green-200 text-green-800" }
+            banner_info = { "text": "會籍有效", "color_class": "bg-green-200 text-green-800" }
 
     elif status == "Trial":
         banner_info = { "text": "試用體驗中", "color_class": "bg-blue-200 text-blue-800" }
@@ -222,7 +235,6 @@ def get_banner_info(user_profile):
         banner_info = { "text": "會籍狀態異常", "color_class": "bg-orange-200 text-orange-800" }
         
     return banner_info
-# ******** 【新增的函式結束】 ********
 
 
 # --- 頁面路由 ---
@@ -262,6 +274,7 @@ def check_status():
     is_active, status = check_user_active(user_id)
     return jsonify({"isActive": is_active, "status": status})
 
+# ===== ▼▼▼ 4. 修改：handle_profile (GET) 函式，讀取問卷欄位 ▼▼▼ =====
 @app.route('/api/profile', methods=['GET', 'POST'])
 def handle_profile():
     user_id = request.args.get('userId')
@@ -270,6 +283,10 @@ def handle_profile():
     is_active, status = check_user_active(user_id)
     operator_id = request.headers.get('X-Operator-User-Id')
     
+    # 新增權限檢查：非管理員不能查詢他人資料
+    if not is_admin(operator_id) and operator_id != user_id:
+        return jsonify({"error": "Permission denied. You can only access your own data."}), 403
+
     if request.method == 'GET' and not is_active and not is_admin(operator_id):
         return jsonify({"error": "Access denied. Your subscription is inactive.", "status": status}), 403
 
@@ -307,36 +324,56 @@ def handle_profile():
             return jsonify({'status': 'success', 'message': 'Profile saved.'})
 
         if request.method == 'GET':
-            cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
+            # 將 SELECT * 改為明確列出所有欄位，確保欄位順序和存在性
+            cur.execute('''
+                SELECT 
+                    user_id, display_name, admin_nickname, height, profile_weight, age, gender,
+                    activity_level, target_calories, water_goal, personal_notes, last_updated,
+                    exercise_goal, exercise_goal_text, capsule_goal, admin_notes, status,
+                    expiry_timestamp, membership_start_date, service_termination_date, is_vip,
+                    q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
+                    q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
+                    q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
+                    q_past_challenges, q_motivation, q_expected_change, ai_profile_summary
+                FROM user_profiles WHERE user_id = %s
+            ''', (user_id,))
             profile = cur.fetchone()
 
             if not profile:
                 print(f"新使用者，ID: {user_id}，正在建立預設試用期...")
                 default_trial_end_date = datetime.now(pytz.utc) + timedelta(days=7)
                 cur.execute(
-                    "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s)",
+                    "INSERT INTO user_profiles (user_id, service_termination_date) VALUES (%s, %s) RETURNING *",
                     (user_id, default_trial_end_date)
                 )
                 conn.commit()
-                print(f"使用者 {user_id} 已建立，服務終止日為 {default_trial_end_date}")
-                cur.execute('SELECT * FROM user_profiles WHERE user_id = %s', (user_id,))
+                # 重新查詢以包含所有欄位
+                cur.execute('''
+                    SELECT 
+                        user_id, display_name, admin_nickname, height, profile_weight, age, gender,
+                        activity_level, target_calories, water_goal, personal_notes, last_updated,
+                        exercise_goal, exercise_goal_text, capsule_goal, admin_notes, status,
+                        expiry_timestamp, membership_start_date, service_termination_date, is_vip,
+                        q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
+                        q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
+                        q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
+                        q_past_challenges, q_motivation, q_expected_change, ai_profile_summary
+                    FROM user_profiles WHERE user_id = %s
+                ''', (user_id,))
                 profile = cur.fetchone()
 
             if profile:
                 profile_dict = dict(profile)
                 
-                # ******** 【修改點】 ********
-                # 將產生 banner_info 的程式碼加在這裡
                 profile_dict['banner_info'] = get_banner_info(profile)
-                # ******** 【修改點結束】 ********
-
+                
                 date_fields = ['expiry_timestamp', 'membership_start_date', 'service_termination_date', 'last_updated']
                 for field in date_fields:
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
                 _is_active, status_string = check_user_active(user_id)
-                profile_dict['computed_status'] = status_string # [修改] 使用 computed_status 
+                profile_dict['computed_status'] = status_string
 
                 profile_dict['days_remaining'] = None
                 if profile.get('expiry_timestamp'):
@@ -348,6 +385,7 @@ def handle_profile():
                 return jsonify(profile_dict)
             
             return jsonify({})
+# ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
 @app.route('/api/log', methods=['GET', 'POST'])
 def handle_log():
@@ -465,11 +503,8 @@ def get_trends():
     is_active, status = check_user_active(user_id)
     if not is_active: return jsonify({"error": "Access denied.", "status": status}), 403
 
-    # ===== ▼▼▼ START: 此函式為本次唯一修改處 ▼▼▼ =====
-    
     today = datetime.now(TAIPEI_TZ).date()
     
-    # 優先處理新的自訂起訖日期參數
     start_date_str = request.args.get('startDate')
     end_date_str = request.args.get('endDate')
     
@@ -477,15 +512,12 @@ def get_trends():
         try:
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-            # 為避免惡意查詢過大範圍，可以加上一個範圍限制，例如最多查詢365天
             if (end_date - start_date).days > 365:
-                 end_date = start_date + timedelta(days=365)
+                end_date = start_date + timedelta(days=365)
         except ValueError:
-            # 如果日期格式錯誤，就退回預設值 (最近7天)
             start_date = today - timedelta(days=6)
             end_date = today
     else:
-        # 如果沒有收到起訖日，則沿用舊的 range 邏輯 (向下相容)
         range_param = request.args.get('range', '7days')
         end_date = today
 
@@ -495,16 +527,12 @@ def get_trends():
             start_date = today - timedelta(days=27)
         else:
             try:
-                # 處理單一日期或 'membership_period' 的情況
                 start_date = datetime.strptime(range_param, '%Y-%m-%d').date()
                 potential_end_date = start_date + timedelta(days=27)
                 end_date = min(potential_end_date, today)
             except ValueError:
-                # 預設為 '7days'
                 start_date = today - timedelta(days=6)
     
-    # ===== ▲▲▲ END: 此函式為本次唯一修改處 ▲▲▲ =====
-
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute('''
@@ -540,7 +568,6 @@ def get_trends():
     total_days = (end_date - start_date).days + 1
     labels = [(start_date + timedelta(days=i)).strftime('%-m/%-d') for i in range(total_days)]
     
-    # [BUG FIX] 直接使用從 JSON 來的日期字串當 key
     logs_dict = {log['log_date']: log for log in logs}
     
     trend_data = {
@@ -552,6 +579,106 @@ def get_trends():
     }
 
     return jsonify({ 'labels': labels, **trend_data, 'averages': averages })
+
+
+# ===== ▼▼▼ 5. 新增：處理問卷提交與AI總結的全新 API 端點 ▼▼▼ =====
+@app.route('/api/summarize-questionnaire', methods=['POST'])
+def summarize_questionnaire():
+    operator_id = request.headers.get('X-Operator-User-Id')
+    if not operator_id:
+        return jsonify({"error": "X-Operator-User-Id header is required"}), 400
+
+    is_active, status = check_user_active(operator_id)
+    if not is_active:
+        return jsonify({"error": "Access denied.", "status": status}), 403
+
+    data = request.json
+    user_id = data.get('userId')
+    q_data = data.get('questionnaireData', {})
+    
+    if not user_id or not q_data:
+        return jsonify({"error": "userId and questionnaireData are required"}), 400
+
+    if not is_admin(operator_id) and operator_id != user_id:
+        return jsonify({"error": "Permission denied."}), 403
+
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        try:
+            # Step 1: 將原始問卷答案存入資料庫
+            # 這裡只列出部分範例，您需要將 liff.js 中收集的所有問卷欄位在此對應
+            update_fields = {
+                'q_occupation': q_data.get('q7_occupation'),
+                'q_occupation_other': q_data.get('q7_occupation_other'),
+                'q_sleep_hours': to_float_or_none(q_data.get('q8_sleep_hours')),
+                'q_exercise_habit': q_data.get('q9_exercise_habit'),
+                'q_stress_level': to_int_or_none(q_data.get('q10_stress_level')),
+                'q_meal_source': q_data.get('q11_meal_source'),
+            }
+            
+            set_clause = ", ".join([f"{key} = %s" for key in update_fields.keys()])
+            values = list(update_fields.values()) + [user_id]
+            
+            cur.execute(f"UPDATE user_profiles SET {set_clause} WHERE user_id = %s", tuple(values))
+
+            # Step 2: 準備給 OpenAI 的 Prompt
+            if not openai_client:
+                raise Exception("OpenAI client 未初始化，無法生成總結。")
+
+            cur.execute("SELECT display_name, gender, age, height, profile_weight FROM user_profiles WHERE user_id = %s", (user_id,))
+            profile = cur.fetchone()
+
+            prompt_text = f"""
+            # 學員背景資料
+            - 稱呼: {profile['display_name'] or '學員'}
+            - 性別: {profile.get('gender')}
+            - 年齡: {profile.get('age')}
+            - 身高: {profile.get('height')} cm
+            - 體重: {profile.get('profile_weight')} kg
+
+            # 問卷回覆
+            - 職業性質: {q_data.get('q7_occupation')} ({q_data.get('q7_occupation_other')})
+            - 平均睡眠: {q_data.get('q8_sleep_hours')} 小時
+            - 運動習慣: {q_data.get('q9_exercise_habit')}
+            - 壓力指數: {q_data.get('q10_stress_level')} / 10
+            - 三餐來源: {q_data.get('q11_meal_source')}
+            """
+            
+            system_prompt = """
+            你是一位專業、有同理心且語氣溫暖的營養師。請根據以下提供的學員背景資料與問卷回覆，生成一份結構化、易讀的個人化分析總結。
+            總結必須包含以下三個部分，並使用 Markdown 格式化：
+            
+            1.  **【嗨，[學員稱呼]！這是你的個人化分析速覽】**: 用 2-3 句溫暖的話開頭，總結學員的整體狀況。
+            2.  **【你的三大亮點】**: 從問卷中找出 2-3 個做得很好的地方（例如：睡眠充足、有運動習慣），並給予具體鼓勵。
+            3.  **【我們可以一起努力的潛力點】**: 同樣從問卷中，溫和地指出 1-2 個最關鍵、最值得優先調整的挑戰（例如：壓力大、外食頻率高），並給予一句初步的、有建設性的建議。
+            
+            請直接輸出總結內容，不要包含任何額外的開場白或結尾。
+            """
+
+            # Step 3: 呼叫 OpenAI API
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt_text}
+                ],
+                temperature=0.7,
+            )
+            ai_summary = response.choices[0].message.content.strip()
+
+            # Step 4: 將 AI 總結存回資料庫
+            cur.execute("UPDATE user_profiles SET ai_profile_summary = %s WHERE user_id = %s", (ai_summary, user_id))
+            
+            conn.commit()
+            
+            # Step 5: 將總結回傳給前端
+            return jsonify({"status": "success", "ai_summary": ai_summary})
+
+        except Exception as e:
+            conn.rollback() 
+            print(f"處理問卷時發生錯誤: {e}")
+            return jsonify({"error": "處理問卷時發生內部錯誤"}), 500
+# ===== ▲▲▲ 5. 新增結束 ▲▲▲ =====
 
 
 # --- 管理員專用 API ---
@@ -567,7 +694,6 @@ def get_all_users():
     if not is_admin(operator_id): return jsonify({"error": "Permission denied"}), 403
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # [修改] 增加查詢 is_vip
         cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, last_updated, is_vip FROM user_profiles ORDER BY last_updated DESC NULLS LAST')
         users = []
         for row in cur.fetchall():
@@ -598,7 +724,6 @@ def update_admin_profile():
         if 'adminNickname' in data:
             cur.execute('UPDATE user_profiles SET admin_nickname = %s WHERE user_id = %s', (data['adminNickname'], target_user_id))
         
-        # [新增] 處理 VIP 狀態
         if 'setVip' in data:
             is_vip = data.get('setVip')
             cur.execute('UPDATE user_profiles SET is_vip = %s WHERE user_id = %s', (is_vip, target_user_id))
@@ -628,7 +753,6 @@ def update_admin_profile():
 
         conn.commit()
         
-        # [修改] 增加查詢 is_vip
         cur.execute('SELECT user_id, display_name, admin_nickname, admin_notes, expiry_timestamp, membership_start_date, service_termination_date, is_vip FROM user_profiles WHERE user_id = %s', (target_user_id,))
         updated_user_raw = cur.fetchone()
         updated_user = dict(updated_user_raw) if updated_user_raw else {}
@@ -643,7 +767,6 @@ def update_admin_profile():
     
     return jsonify({"status": "success", "user": updated_user})
 
-# [新增] 刪除使用者的 API Endpoint
 @app.route('/api/admin/user/<string:user_id>', methods=['DELETE'])
 def delete_user(user_id):
     operator_id = request.headers.get('X-Operator-User-Id')
@@ -653,11 +776,9 @@ def delete_user(user_id):
     conn = get_db_connection()
     with conn.cursor() as cur:
         try:
-            # 確保先刪除有參考 user_id 的資料表紀錄
             cur.execute("DELETE FROM daily_logs WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM user_exercises WHERE user_id = %s", (user_id,))
             
-            # 最後再刪除 user_profiles 中的主紀錄
             cur.execute("DELETE FROM user_profiles WHERE user_id = %s", (user_id,))
             
             conn.commit()
