@@ -275,9 +275,9 @@ async function handleQuestionnaireSubmit() {
 
     // --- Step 1: 必填驗證 ---
     const requiredFields = [
-        { id: 'q1-occupation', type: 'radio', name: 'q1-occupation', message: '請選擇您的職業性質' },
+        { id: 'q1-occupation-group', type: 'radio', name: 'q1-occupation', message: '請選擇您的職業性質' },
         { id: 'q2-sleep-hours', type: 'number', message: '請輸入您的平均睡眠時數' },
-        { id: 'q3-exercise-habit', type: 'radio', name: 'q3-exercise-habit', message: '請選擇您的運動習慣' },
+        { id: 'q3-exercise-habit-group', type: 'radio', name: 'q3-exercise-habit', message: '請選擇您的運動習慣' },
         // ... 您可以繼續加入其他必填問題 ...
     ];
 
@@ -309,9 +309,16 @@ async function handleQuestionnaireSubmit() {
         if (!isFieldValid) {
             allValid = false;
             if (errorElement) {
-                errorElement.classList.add('border-red-500', 'border-2'); // 加上紅框
+                // 對於選項群組，我們在其父容器 question-item 上加紅框
+                const questionItem = errorElement.closest('.question-item');
+                if(questionItem){
+                    questionItem.classList.add('border-red-500', 'border-2'); 
+                } else {
+                    errorElement.classList.add('border-red-500', 'border-2'); // 加上紅框
+                }
+
                 if (!firstErrorElement) {
-                    firstErrorElement = errorElement; // 記錄第一個錯誤的元素
+                    firstErrorElement = questionItem || errorElement; // 記錄第一個錯誤的元素
                 }
             }
         }
@@ -933,6 +940,28 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
+// ===== ▼▼▼ 【新增】處理問卷選項提示的函式 ▼▼▼ =====
+function updateQuestionnaireIndicator(inputElement) {
+    const questionItem = inputElement.closest('.question-item');
+    if (!questionItem) return;
+
+    const indicator = questionItem.querySelector('.selected-answer-indicator');
+    if (!indicator) return;
+
+    const inputType = inputElement.getAttribute('type');
+    const inputName = inputElement.getAttribute('name');
+
+    if (inputType === 'radio') {
+        indicator.textContent = inputElement.value;
+    } else if (inputType === 'checkbox') {
+        // 找到這個問題所有的 checkbox
+        const allCheckboxes = questionItem.querySelectorAll(`input[name="${inputName}"]:checked`);
+        const values = Array.from(allCheckboxes).map(cb => cb.value);
+        indicator.textContent = values.join(', ');
+    }
+}
+// ===== ▲▲▲ 【新增】處理問卷選項提示的函式 ▲▲▲ =====
+
 // ===== ▼▼▼ 4. 修改：setupEventListeners 函式，加入新功能事件綁定 ▼▼▼ =====
 function setupEventListeners() {
     // ---- 原有事件綁定 (完全不變) ----
@@ -1100,6 +1129,17 @@ function setupEventListeners() {
     if (submitBtn) {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
+
+    // ===== ▼▼▼ 【新增】監聽問卷選項變更的事件 ▼▼▼ =====
+    const questionnaireTab = document.getElementById('questionnaire-sub-tab');
+    if (questionnaireTab) {
+        questionnaireTab.addEventListener('change', (event) => {
+            if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
+                updateQuestionnaireIndicator(event.target);
+            }
+        });
+    }
+    // ===== ▲▲▲ 【新增】監聽問卷選項變更的事件 ▲▲▲ =====
 }
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
