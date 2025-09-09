@@ -134,7 +134,9 @@ def init_db():
             'q_past_challenges': 'TEXT',
             'q_motivation': 'TEXT',
             'q_expected_change': 'TEXT',
-            'ai_profile_summary': 'TEXT' # 儲存 AI 總結的欄位
+            'ai_profile_summary': 'TEXT', # 儲存 AI 總結的欄位（注意這裡要加逗號）
+            'ai_analysis_timestamp': 'TIMESTAMPTZ',
+            'user_card_cache': 'JSONB'
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
         existing_cols = [row[0] for row in cur.fetchall()]
@@ -334,7 +336,8 @@ def handle_profile():
                     q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
                     q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                     q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
-                    q_past_challenges, q_motivation, q_expected_change, ai_profile_summary
+                    q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
+                    ai_analysis_timestamp
                 FROM user_profiles WHERE user_id = %s
             ''', (user_id,))
             profile = cur.fetchone()
@@ -357,7 +360,8 @@ def handle_profile():
                         q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
                         q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                         q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
-                        q_past_challenges, q_motivation, q_expected_change, ai_profile_summary
+                        q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
+                        ai_analysis_timestamp
                     FROM user_profiles WHERE user_id = %s
                 ''', (user_id,))
                 profile = cur.fetchone()
@@ -638,7 +642,10 @@ def summarize_questionnaire():
             if not openai_client:
                 raise Exception("OpenAI client 未初始化，無法生成總結。")
 
-            cur.execute("SELECT display_name, gender, age, height, profile_weight FROM user_profiles WHERE user_id = %s", (user_id,))
+            cur.execute("""SELECT display_name, gender, age, height, profile_weight,
+                target_calories, water_goal, exercise_goal, capsule_goal,
+                activity_level, personal_notes
+                FROM user_profiles WHERE user_id = %s""", (user_id,))
             profile = cur.fetchone()
 
             # 建立一個輔助函式，讓 prompt 更乾淨
@@ -668,6 +675,13 @@ def summarize_questionnaire():
             - 過去挑戰: {get_q_value('q10_past_challenges')}
             - 主要動機: {get_q_value('q11_motivation')}
             - 期望改變: {get_q_value('q12_expected_change')}
+            # 目標設定
+            - 每日熱量目標: {profile.get('target_calories') or '未設定'} kcal
+            - 每日飲水目標: {profile.get('water_goal') or '未設定'} cc
+            - 每日運動目標: {profile.get('exercise_goal') or '未設定'} kcal
+            - 活動量係數: {profile.get('activity_level') or '未設定'}
+            - 個人備註: {profile.get('personal_notes') or '無'}
+            
             """
             
             system_prompt = """
@@ -693,12 +707,19 @@ def summarize_questionnaire():
             ai_summary = response.choices[0].message.content.strip()
 
             # Step 4: 將 AI 總結存回資料庫
-            cur.execute("UPDATE user_profiles SET ai_profile_summary = %s WHERE user_id = %s", (ai_summary, user_id))
+            now_utc = datetime.now(pytz.utc)
+            cur.execute("UPDATE user_profiles SET ai_profile_summary = %s, ai_analysis_timestamp = %s WHERE user_id = %s", 
+                (ai_summary, now_utc, user_id))
             
             conn.commit()
             
             # Step 5: 將總結回傳給前端
-            return jsonify({"status": "success", "ai_summary": ai_summary})
+            # ▼▼▼ 修改：回傳時包含時間戳記 ▼▼▼
+            return jsonify({
+                "status": "success", 
+                "ai_summary": ai_summary,
+                "ai_analysis_timestamp": now_utc.isoformat()
+            })
 
         except Exception as e:
             conn.rollback() 
