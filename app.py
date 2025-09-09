@@ -183,6 +183,24 @@ def send_final_message(user_id, reply_token, message_objects):
     except Exception as e:
         print(f"ERROR: An unexpected error occurred in send_final_message for user {user_id}: {e}")
 
+# ===== ▼▼▼ 新增：取得用戶資料函數 ▼▼▼ =====
+import requests
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")  # 如果是 Render 要改成你的 API 網址
+
+def get_user_profile_summary(user_id):
+    """取得用戶資料摘要"""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/api/user-profile-summary?userId={user_id}",
+            timeout=2  # 2秒超時，避免拖慢回應
+        )
+        if response.ok:
+            return response.json()
+    except Exception as e:
+        print(f"DEBUG: Failed to get user profile: {e}")
+    return None
+# ===== ▲▲▲ 新增結束 ▲▲▲ =====
+
 def process_message_bundle(user_id, reply_token):
     print(f"DEBUG: ⏰ Timer expired for user {user_id}. Starting bundle processing.")
     
@@ -207,6 +225,29 @@ def process_message_bundle(user_id, reply_token):
         print(f"ERROR: Failed to retrieve data from Redis for user {user_id}: {e}")
         return
 
+    # ===== ▼▼▼ 新增：取得用戶資料 ▼▼▼ =====
+    user_profile = get_user_profile_summary(user_id)
+    user_context = ""
+    if user_profile:
+        user_context = f"""【學員資料】
+身高：{user_profile.get('height', '未設定')} cm
+體重：{user_profile.get('profile_weight', '未設定')} kg
+年齡：{user_profile.get('age', '未設定')} 歲
+性別：{'男性' if user_profile.get('gender') == 'male' else '女性' if user_profile.get('gender') == 'female' else '未設定'}
+每日熱量目標：{user_profile.get('target_calories', '未設定')} kcal
+每日飲水目標：{user_profile.get('water_goal', '未設定')} cc
+過敏/備註：{user_profile.get('personal_notes', '無')}
+食物過敏：{user_profile.get('q_allergy_details', '無')}
+
+【最近3天平均】
+熱量：{user_profile.get('avg_calories', 'N/A')} kcal
+飲水：{user_profile.get('avg_water', 'N/A')} cc
+最近體重：{user_profile.get('latest_weight', 'N/A')} kg
+
+"""
+        print(f"DEBUG: User profile loaded for {user_id}")
+    # ===== ▲▲▲ 新增結束 ▲▲▲ =====
+  
     # --- [核心修改] 程式碼路由邏輯 ---
     images = [msg for msg in message_bundle if msg['type'] == 'image']
     texts = [msg['content'] for msg in message_bundle if msg['type'] == 'text']
@@ -250,7 +291,12 @@ def process_message_bundle(user_id, reply_token):
                 system_prompt = PROMPT_NUTRITION_TASK
             else: 
                 system_prompt = PROMPT_CHAT_TASK
-        
+
+        # ===== ▼▼▼ 新增：將用戶資料加到 prompt 前面 ▼▼▼ =====
+        if user_context:
+            system_prompt = user_context + "\n" + system_prompt
+        # ===== ▲▲▲ 新增結束 ▲▲▲ =====
+      
         messages_to_openai = [{"role": "system", "content": system_prompt}] + conversation_history
         messages_to_openai.append({"role": "user", "content": current_user_content})
         
