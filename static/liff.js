@@ -201,13 +201,23 @@ async function loadProfileData() {
 
     // ▼▼▼ 新增：載入 AI 分析資料（加在這裡） ▼▼▼
     if (userProfileData.ai_profile_summary) {
-        const aiAnalysisContainer = document.getElementById('ai-analysis-content');
+        const aiAnalysisContainer = document.getElementById('background-analysis-content');
         aiAnalysisContainer.innerHTML = userProfileData.ai_profile_summary.replace(/\n/g, '<br>');
     }
     if (userProfileData.ai_analysis_timestamp) {
-        const timestampEl = document.getElementById('ai-analysis-timestamp');
+        const timestampEl = document.getElementById('background-analysis-timestamp');
         timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.ai_analysis_timestamp)}`;
     }
+    // ▼▼▼ 新增：載入目標分析 ▼▼▼
+    if (userProfileData.goal_analysis_summary) {
+        const goalAnalysisContainer = document.getElementById('goal-analysis-content');
+        goalAnalysisContainer.innerHTML = userProfileData.goal_analysis_summary.replace(/\n/g, '<br>');
+    }
+    if (userProfileData.goal_analysis_timestamp) {
+        const timestampEl = document.getElementById('goal-analysis-timestamp');
+        timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.goal_analysis_timestamp)}`;
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
     // ▲▲▲ 新增結束 ▲▲▲
     
     // ▼▼▼ 在這裡加入：載入問卷答案 ▼▼▼
