@@ -136,6 +136,8 @@ def init_db():
             'q_expected_change': 'TEXT',
             'ai_profile_summary': 'TEXT', # 儲存 AI 總結的欄位（注意這裡要加逗號）
             'ai_analysis_timestamp': 'TIMESTAMPTZ',
+            'goal_analysis_summary': 'TEXT',  # 新增這行
+            'goal_analysis_timestamp': 'TIMESTAMPTZ',  # 新增這行
             'user_card_cache': 'JSONB'
         }
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='user_profiles'")
@@ -337,7 +339,8 @@ def handle_profile():
                     q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                     q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                     q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
-                    ai_analysis_timestamp
+                    ai_analysis_timestamp,
+                    goal_analysis_summary, goal_analysis_timestamp  # 新增這兩個欄位
                 FROM user_profiles WHERE user_id = %s
             ''', (user_id,))
             profile = cur.fetchone()
@@ -361,7 +364,9 @@ def handle_profile():
                         q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
                         q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                         q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
-                        ai_analysis_timestamp
+                        ai_analysis_timestamp,  # 這裡要逗號
+                        goal_analysis_summary, goal_analysis_timestamp  # 新增這兩個欄位
+
                     FROM user_profiles WHERE user_id = %s
                 ''', (user_id,))
                 profile = cur.fetchone()
@@ -376,7 +381,7 @@ def handle_profile():
                     if profile_dict.get(field):
                         profile_dict[field] = profile_dict[field].astimezone(TAIPEI_TZ).isoformat()
                 
-                _is_active, status_string = check_user_active(user_id)
+                is_active, status_string = check_user_active(user_id)
                 profile_dict['computed_status'] = status_string
 
                 profile_dict['days_remaining'] = None
@@ -725,6 +730,127 @@ def summarize_questionnaire():
             conn.rollback() 
             print(f"處理問卷時發生錯誤: {e}")
             return jsonify({"error": "處理問卷時發生內部錯誤"}), 500
+
+@app.route('/api/generate-goal-analysis', methods=['POST'])
+def generate_goal_analysis():
+    operator_id = request.headers.get('X-Operator-User-Id')
+    if not operator_id:
+        return jsonify({"error": "X-Operator-User-Id header is required"}), 400
+
+    is_active, status = check_user_active(operator_id)
+    if not is_active:
+        return jsonify({"error": "Access denied.", "status": status}), 403
+
+    data = request.json
+    user_id = data.get('userId')
+    goal_data = data.get('goalData', {})
+    
+    if not user_id or not goal_data:
+        return jsonify({"error": "userId and goalData are required"}), 400
+
+    if not is_admin(operator_id) and operator_id != user_id:
+        return jsonify({"error": "Permission denied."}), 403
+
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        try:
+            # 檢查 OpenAI client
+            if not openai_client:
+                raise Exception("OpenAI client 未初始化，無法生成分析。")
+
+            # 準備 prompt
+            prompt_text = f"""
+            # 使用者目標設定資料
+            - 身高：{goal_data.get('height')} cm
+            - 體重：{goal_data.get('weight')} kg
+            - 年齡：{goal_data.get('age')} 歲
+            - 性別：{'男性' if goal_data.get('gender') == 'male' else '女性'}
+            - 活動量係數：{goal_data.get('activityLevel')}
+            - BMR：{goal_data.get('bmr')} kcal
+            - TDEE：{goal_data.get('tdee')} kcal
+            
+            # 每日目標
+            - 熱量目標：{goal_data.get('targetCalories')} kcal
+            - 飲水目標：{goal_data.get('waterGoal')} cc
+            - 運動目標：{goal_data.get('exerciseGoalText')} ({goal_data.get('exerciseGoal')} kcal)
+            - 燃脂膠囊目標：{goal_data.get('capsuleGoal')} 包
+            - 個人備註：{goal_data.get('personalNotes')}
+            
+            # 常用運動
+            {', '.join([f"{ex.get('exercise_name')} {ex.get('kcal')}kcal" for ex in goal_data.get('userExercises', []) if ex.get('exercise_name')])}
+            """
+            
+            system_prompt = """
+            你是一位專業的營養教練。請根據使用者的目標設定，生成一份詳細的28天執行計畫。
+            
+            請使用以下格式：
+            
+            **【28天執行計畫總覽】**
+            簡述這份計畫的核心目標和預期成果（2-3句）
+            
+            **【第一週：適應期】**
+            - 本週重點：建立基礎習慣
+            - 飲食建議：（具體建議）
+            - 運動安排：（根據使用者的運動目標）
+            - 預期挑戰與解決方案
+            
+            **【第二週：強化期】**
+            - 本週重點：提升執行強度
+            - 飲食調整：（進階建議）
+            - 運動進展：（循序漸進）
+            - 心理建設要點
+            
+            **【第三週：鞏固期】**
+            - 本週重點：穩定習慣養成
+            - 飲食微調：（精準控制）
+            - 運動優化：（提升效率）
+            - 克服停滯期策略
+            
+            **【第四週：衝刺期】**
+            - 本週重點：最後衝刺
+            - 飲食執行：（嚴格執行）
+            - 運動表現：（全力以赴）
+            - 成果評估與下階段規劃
+            
+            **【每日執行要點】**
+            列出3-5個每天都要做到的關鍵行動
+            
+            請根據使用者的實際數據給出具體、可執行的建議。
+            """
+
+            # 呼叫 OpenAI API
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt_text}
+                ],
+                temperature=0.7,
+            )
+            goal_analysis = response.choices[0].message.content.strip()
+
+            # 儲存到資料庫
+            now_utc = datetime.now(pytz.utc)
+            cur.execute("""
+                UPDATE user_profiles 
+                SET goal_analysis_summary = %s, 
+                    goal_analysis_timestamp = %s 
+                WHERE user_id = %s
+            """, (goal_analysis, now_utc, user_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                "status": "success",
+                "goal_analysis": goal_analysis,
+                "goal_analysis_timestamp": now_utc.isoformat()
+            })
+
+        except Exception as e:
+            conn.rollback()
+            print(f"生成目標分析時發生錯誤: {e}")
+            return jsonify({"error": "生成分析時發生內部錯誤"}), 500
+
 # ==============================================================================
 # ===== ▲▲▲ 【修正】結束 ▲▲▲ =====
 # ==============================================================================
@@ -844,6 +970,6 @@ def delete_user(user_id):
 with app.app_context():
     init_db()
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # 注意是雙底線
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
