@@ -1363,6 +1363,7 @@ function setupEventListeners() {
 
     }
     // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
+}  // <-- 這個是關閉 setupEventListeners 函式的
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
 function renderUserExerciseButtons() {
