@@ -228,24 +228,132 @@ def process_message_bundle(user_id, reply_token):
     # ===== ▼▼▼ 新增：取得用戶資料 ▼▼▼ =====
     user_profile = get_user_profile_summary(user_id)
     user_context = ""
-    if user_profile:
-        user_context = f"""【學員資料】
-身高：{user_profile.get('height', '未設定')} cm
-體重：{user_profile.get('profile_weight', '未設定')} kg
-年齡：{user_profile.get('age', '未設定')} 歲
-性別：{'男性' if user_profile.get('gender') == 'male' else '女性' if user_profile.get('gender') == 'female' else '未設定'}
-每日熱量目標：{user_profile.get('target_calories', '未設定')} kcal
-每日飲水目標：{user_profile.get('water_goal', '未設定')} cc
-過敏/備註：{user_profile.get('personal_notes', '無')}
-食物過敏：{user_profile.get('q_allergy_details', '無')}
+if user_profile:
+    # 組合最近飲食摘要
+    recent_meals_text = ""
+    if user_profile.get('recent_meals'):
+        recent_meals_text = "\n【最近一週飲食記錄】"
+        for meal in user_profile['recent_meals'][:7]:
+            recent_meals_text += f"\n{meal['date']}："
+            recent_meals_text += f"\n  早餐：{meal['breakfast']}"
+            recent_meals_text += f"\n  午餐：{meal['lunch']}"
+            recent_meals_text += f"\n  晚餐：{meal['dinner']}"
+            if meal.get('snacks') and '無' not in meal['snacks']:
+                recent_meals_text += f"\n  點心：{meal['snacks']}"
+            if meal.get('drinks') and '無' not in meal['drinks']:
+                recent_meals_text += f"\n  飲料：{meal['drinks']}"
+            recent_meals_text += f"\n  飲水：{meal.get('water', 0)}cc"
+            if meal.get('exercise') and '無' not in meal['exercise']:
+                recent_meals_text += f"\n  運動：{meal['exercise']}"
+    
+    # 職業處理（包含其他）
+    occupation = user_profile.get('q_occupation', '')
+    if occupation == 'A':
+        occupation = '辦公室工作(長時間久坐)'
+    elif occupation == 'B':
+        occupation = '服務業/教職(長時間站立或走動)'
+    elif occupation == 'C':
+        occupation = '體力勞動工作'
+    elif occupation == 'D':
+        occupation = '家管/自由業(作息較彈性)'
+    elif occupation == 'E' and user_profile.get('q_occupation_other'):
+        occupation = f"其他：{user_profile.get('q_occupation_other')}"
+    else:
+        occupation = '未填寫'
+    
+    # 運動習慣處理
+    exercise_habit = user_profile.get('q_exercise_habit', '')
+    exercise_map = {
+        'A': '幾乎不運動',
+        'B': '每週1-2天',
+        'C': '每週3-4天',
+        'D': '每週5天以上'
+    }
+    exercise_habit = exercise_map.get(exercise_habit, '未填寫')
+    
+    # 三餐來源處理
+    meal_source = user_profile.get('q_meal_source', '')
+    meal_map = {
+        'A': '幾乎外食',
+        'B': '多為自己或家人烹煮',
+        'C': '外食與自煮各半'
+    }
+    meal_source = meal_map.get(meal_source, '未填寫')
+    
+    # 飲品處理（包含其他）
+    other_drinks = user_profile.get('q_other_drinks', '')
+    if other_drinks == 'A':
+        other_drinks = '無糖茶或咖啡'
+    elif other_drinks == 'B':
+        other_drinks = '含糖飲料(手搖飲、汽水等)'
+    elif other_drinks == 'C':
+        other_drinks = '酒精'
+    elif other_drinks == 'D' and user_profile.get('q_other_drinks_detail'):
+        other_drinks = f"其他：{user_profile.get('q_other_drinks_detail')}"
+    elif other_drinks == 'E':
+        other_drinks = '幾乎只喝水'
+    else:
+        other_drinks = '未填寫'
+    
+    # 點心習慣處理
+    snacks_habit = user_profile.get('q_snacks_habit', '')
+    snacks_map = {
+        'A': '幾乎沒有',
+        'B': '偶爾吃(一週1-3次)',
+        'C': '經常吃(一週4次以上)'
+    }
+    snacks_habit = snacks_map.get(snacks_habit, '未填寫')
+    
+    # 常用運動整理
+    exercises_text = ""
+    if user_profile.get('user_exercises'):
+        exercises_list = [f"{ex['exercise_name']}({ex['kcal']}kcal)" 
+                         for ex in user_profile['user_exercises'] 
+                         if ex.get('exercise_name')]
+        if exercises_list:
+            exercises_text = "、".join(exercises_list)
+    
+    user_context = f"""【學員完整資料】
+基本資料：
+- 姓名：{user_profile.get('display_name', '學員')}
+- 身高：{user_profile.get('height', '未設定')}cm
+- 體重：{user_profile.get('profile_weight', '未設定')}kg
+- 年齡：{user_profile.get('age', '未設定')}歲
+- 性別：{'男性' if user_profile.get('gender') == 'male' else '女性' if user_profile.get('gender') == 'female' else '未設定'}
 
-【最近3天平均】
-熱量：{user_profile.get('avg_calories', 'N/A')} kcal
-飲水：{user_profile.get('avg_water', 'N/A')} cc
-最近體重：{user_profile.get('latest_weight', 'N/A')} kg
+目標設定：
+- 活動量係數：{user_profile.get('activity_level', '未設定')}
+- 每日熱量目標：{user_profile.get('target_calories', '未設定')}kcal
+- 每日飲水目標：{user_profile.get('water_goal', '未設定')}cc
+- 每日運動目標：{user_profile.get('exercise_goal_text', '無')} ({user_profile.get('exercise_goal', 0)}kcal)
+- 每日膠囊目標：{user_profile.get('capsule_goal', 0)}包
+- 常用運動：{exercises_text or '未設定'}
+- 個人備註：{user_profile.get('personal_notes', '無')}
+
+生活習慣（問卷）：
+- 職業性質：{occupation}
+- 睡眠時數：{user_profile.get('q_sleep_hours', '未填寫')}小時
+- 運動習慣：{exercise_habit}
+- 壓力指數：{user_profile.get('q_stress_level', '未填寫')}/10
+- 三餐來源：{meal_source}
+- 每日飲水習慣：{user_profile.get('q_daily_water', '未填寫')}cc
+- 常喝飲品：{other_drinks}
+- 點心宵夜習慣：{snacks_habit}
+
+健康狀況：
+- 健康問題：{user_profile.get('q_health_conditions', '無')}
+- 食物過敏：{user_profile.get('q_allergy_details', '無')}
+- 其他疾病：{user_profile.get('q_other_illness', '無')}
+
+減重背景：
+- 過去減重挑戰：{user_profile.get('q_past_challenges', '未填寫')}
+- 這次的動機：{user_profile.get('q_motivation', '未填寫')}
+- 期望的改變：{user_profile.get('q_expected_change', '未填寫')}
+{recent_meals_text}
 
 """
-        print(f"DEBUG: User profile loaded for {user_id}")
+    print(f"DEBUG: Complete user profile loaded for {user_id}")
+
     # ===== ▲▲▲ 新增結束 ▲▲▲ =====
   
     # --- [核心修改] 程式碼路由邏輯 ---
