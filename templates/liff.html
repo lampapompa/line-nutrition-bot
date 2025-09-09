@@ -163,9 +163,10 @@
             
             <div id="profile-main-tab" class="hidden space-y-4">
                 <div class="flex justify-center p-1 space-x-1 bg-gray-200 rounded-lg">
-                    <button onclick="switchSubTab('goal-setting')" data-sub-tab="goal-setting" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">目標設定</button>
-                    <button onclick="switchSubTab('questionnaire')" data-sub-tab="questionnaire" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">背景探索</button>
-                    <button onclick="switchSubTab('ai-analysis')" data-sub-tab="ai-analysis" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">AI 分析</button>
+                    <button onclick="switchSubTab('goal-setting')" data-sub-tab="goal-setting" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">目標設定</button>
+                    <button onclick="switchSubTab('goal-analysis')" data-sub-tab="goal-analysis" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">目標分析</button>
+                    <button onclick="switchSubTab('questionnaire')" data-sub-tab="questionnaire" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">背景探索</button>
+                    <button onclick="switchSubTab('background-analysis')" data-sub-tab="background-analysis" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">背景分析</button>
                 </div>
                 
                 <div id="sub-tab-content">
@@ -267,6 +268,23 @@
                             </div>
                         </div>
                         </div>
+
+                    <!-- ▼▼▼ 新增：目標分析頁面 ▼▼▼ -->
+                    <div id="goal-analysis-sub-tab" class="hidden space-y-4">
+                        <div class="bg-white p-4 rounded-lg shadow-sm min-h-[300px]">
+                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">28天執行計畫分析</h3>
+                            <p id="goal-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
+                            <div id="goal-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
+                                <p class="text-center text-gray-500">您尚未生成執行計畫。<br>請先至「目標設定」分頁完成設定。</p>
+                            </div>
+                        </div>
+                        <div class="pt-4">
+                            <button id="generate-goal-analysis-btn" class="w-full rounded-lg bg-emerald-600 px-5 py-3 text-lg font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                                生成我的 28 天執行計畫
+                            </button>
+                        </div>
+                    </div>
+                    <!-- ▲▲▲ 新增結束 ▲▲▲ -->
 
                     <div id="questionnaire-sub-tab" class="hidden space-y-4">
                         <div class="space-y-2 text-center">
@@ -400,11 +418,11 @@
                         </div>
                         </div>
 
-                    <div id="ai-analysis-sub-tab" class="hidden space-y-4">
+                    <div id="background-analysis-sub-tab" class="hidden space-y-4">
                         <div class="bg-white p-4 rounded-lg shadow-sm min-h-[300px]">
-                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">AI 個人化分析報告</h3>
-                            <p id="ai-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
-                            <div id="ai-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
+                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">背景個人化分析報告</h3>
+                            <p id="background-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
+                            <div id="background-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
                                 <p class="text-center text-gray-500">您尚未生成分析報告。<br>請先至「背景探索」分頁完成問卷。</p>
                             </div>
                         </div>
