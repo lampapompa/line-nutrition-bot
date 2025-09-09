@@ -508,6 +508,64 @@ async function handleQuestionnaireSubmit() {
 }
 // ===== ▲▲▲ 1. 新增結束 ▲▲▲ =====
 
+// ===== ▼▼▼ 新增：處理目標分析提交的函式 ▼▼▼ =====
+async function handleGoalAnalysisSubmit() {
+    const submitButton = document.getElementById('generate-goal-analysis-btn');
+    
+    // 收集目標設定資料
+    const goalData = {
+        height: document.getElementById('height').value,
+        weight: document.getElementById('profile-weight').value,
+        age: document.getElementById('age').value,
+        gender: document.getElementById('gender').value,
+        activityLevel: document.getElementById('activity-level').value,
+        bmr: userProfileData.bmr,
+        tdee: document.getElementById('tdee-display').textContent.replace(' kcal', ''),
+        targetCalories: document.getElementById('target-calories').value,
+        waterGoal: document.getElementById('water-goal').value,
+        exerciseGoal: document.getElementById('exercise-goal').value,
+        exerciseGoalText: document.getElementById('exercise-goal-text').value,
+        capsuleGoal: document.getElementById('capsule-goal').value,
+        personalNotes: document.getElementById('personal-notes').value,
+        userExercises: userExercises // 加入常用運動
+    };
+    
+    // 顯示載入中
+    const originalButtonText = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+    
+    try {
+        // 呼叫 API 生成分析
+        const response = await fetchAPI('/api/generate-goal-analysis', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: userToLoad,
+                goalData: goalData
+            })
+        });
+        
+        // 顯示結果
+        if (response && response.goal_analysis) {
+            document.getElementById('goal-analysis-content').innerHTML = response.goal_analysis.replace(/\n/g, '<br>');
+            if (response.goal_analysis_timestamp) {
+                document.getElementById('goal-analysis-timestamp').textContent = `分析生成時間：${formatDetailedDate(response.goal_analysis_timestamp)}`;
+            }
+            showToast('28天執行計畫已生成！');
+        } else {
+            throw new Error('後端未回傳有效的目標分析');
+        }
+        
+    } catch (error) {
+        console.error("生成目標分析失敗:", error);
+        showToast('分析生成失敗，請稍後再試');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonText;
+    }
+}
+// ===== ▲▲▲ 新增結束 ▲▲▲ =====
+
 // --- 4. UI 更新與事件處理函式 ---
 function handleLogInputChange() {
     updateGoalDashboard();
@@ -639,10 +697,12 @@ function switchTab(tabName) {
 
 // ===== ▼▼▼ 3. 新增：switchSubTab 函式，處理「我的檔案」底下的小分頁切換 ▼▼▼ =====
 function switchSubTab(subTabName) {
-    ['goal-setting-sub-tab', 'questionnaire-sub-tab', 'ai-analysis-sub-tab'].forEach(subTabId => {
+    // ▼▼▼ 【修改】加入 goal-analysis-sub-tab 和改名 background-analysis-sub-tab ▼▼▼
+    ['goal-setting-sub-tab', 'goal-analysis-sub-tab', 'questionnaire-sub-tab', 'background-analysis-sub-tab'].forEach(subTabId => {
         const subTabElement = document.getElementById(subTabId);
         if (subTabElement) subTabElement.classList.add('hidden');
     });
+    // ▲▲▲ 【修改】結束 ▲▲▲
 
     document.querySelectorAll('.sub-tab-button').forEach(button => {
         button.classList.remove('active');
@@ -1251,6 +1311,13 @@ function setupEventListeners() {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
 
+    // ▼▼▼ 新增：綁定目標分析按鈕 ▼▼▼
+    const goalAnalysisBtn = document.getElementById('generate-goal-analysis-btn');
+    if (goalAnalysisBtn) {
+        goalAnalysisBtn.addEventListener('click', handleGoalAnalysisSubmit);
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
+    
 // ===== ▼▼▼ 【修改】簡化事件處理，避免重複 ▼▼▼ =====
     const questionnaireTab = document.getElementById('questionnaire-sub-tab');
     if (questionnaireTab) {
