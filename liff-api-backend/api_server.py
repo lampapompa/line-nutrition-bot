@@ -977,11 +977,23 @@ def get_user_profile_summary():
     
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-        # 取得基本資料
+        # 取得所有個人資料（包含問卷所有欄位）
         cur.execute("""
-            SELECT display_name, height, profile_weight, age, gender,
-                   target_calories, water_goal, exercise_goal,
-                   personal_notes, q_allergy_details
+            SELECT 
+                -- 基本資料
+                display_name, height, profile_weight, age, gender,
+                -- 目標設定（每一格）
+                activity_level, target_calories, water_goal, exercise_goal, 
+                exercise_goal_text, capsule_goal, personal_notes,
+                -- 問卷資料（背景探索每一題）
+                q_occupation, q_occupation_other, q_sleep_hours, 
+                q_exercise_habit, q_stress_level, q_meal_source, 
+                q_daily_water, q_other_drinks, q_other_drinks_detail,
+                q_snacks_habit, q_health_conditions, q_allergy_details, 
+                q_other_illness, q_past_challenges, q_motivation, 
+                q_expected_change,
+                -- AI 分析
+                ai_profile_summary, goal_analysis_summary
             FROM user_profiles 
             WHERE user_id = %s
         """, (user_id,))
@@ -990,27 +1002,54 @@ def get_user_profile_summary():
         if not profile:
             return jsonify({})
         
-        # 取得最近3天平均
+        # 取得最近7天詳細飲食記錄
         cur.execute("""
             SELECT 
-                AVG(COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + 
-                    COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + 
-                    COALESCE(drinks_kcal,0)) as avg_calories,
-                AVG(water_cc) as avg_water,
-                MAX(daily_weight) as latest_weight
+                log_date,
+                breakfast_text, breakfast_kcal,
+                lunch_text, lunch_kcal,
+                dinner_text, dinner_kcal,
+                snacks_text, snacks_kcal,
+                drinks_text, drinks_kcal,
+                water_cc, exercise_text, exercise_kcal, 
+                daily_weight, capsule_qty
             FROM daily_logs 
             WHERE user_id = %s 
-            AND log_date >= CURRENT_DATE - INTERVAL '3 days'
+            AND log_date >= CURRENT_DATE - INTERVAL '7 days'
+            ORDER BY log_date DESC
         """, (user_id,))
-        recent_stats = cur.fetchone()
+        recent_logs = cur.fetchall()
         
+        # 取得常用運動
+        cur.execute("""
+            SELECT slot_index, exercise_name, kcal 
+            FROM user_exercises 
+            WHERE user_id = %s 
+            ORDER BY slot_index
+        """, (user_id,))
+        exercises = cur.fetchall()
+        
+        # 組合結果
         result = dict(profile)
-        if recent_stats:
-            result.update({
-                'avg_calories': round(recent_stats['avg_calories'] or 0),
-                'avg_water': round(recent_stats['avg_water'] or 0),
-                'latest_weight': recent_stats['latest_weight']
+        
+        # 加入一週飲食記錄
+        result['recent_meals'] = []
+        for log in recent_logs:
+            result['recent_meals'].append({
+                'date': log['log_date'].strftime('%Y-%m-%d'),
+                'breakfast': f"{log['breakfast_text'] or '無'} ({log['breakfast_kcal'] or 0}kcal)",
+                'lunch': f"{log['lunch_text'] or '無'} ({log['lunch_kcal'] or 0}kcal)",
+                'dinner': f"{log['dinner_text'] or '無'} ({log['dinner_kcal'] or 0}kcal)",
+                'snacks': f"{log['snacks_text'] or '無'} ({log['snacks_kcal'] or 0}kcal)",
+                'drinks': f"{log['drinks_text'] or '無'} ({log['drinks_kcal'] or 0}kcal)",
+                'water': log['water_cc'],
+                'exercise': f"{log['exercise_text'] or '無'} ({log['exercise_kcal'] or 0}kcal)",
+                'weight': log['daily_weight'],
+                'capsule': log['capsule_qty']
             })
+        
+        # 加入常用運動
+        result['user_exercises'] = [dict(ex) for ex in exercises]
         
         return jsonify(result)
 # ===== ▲▲▲ 新增結束 ▲▲▲ =====
