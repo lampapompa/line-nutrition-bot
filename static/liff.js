@@ -258,6 +258,16 @@ async function loadProfileData() {
             radio.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
+
+    // ▼▼▼ 加入這段：載入其他飲料詳細內容 ▼▼▼
+    if (userProfileData.q_other_drinks_detail) {
+        document.getElementById('q7-other-drinks-detail').value = userProfileData.q_other_drinks_detail;
+        if (userProfileData.q_other_drinks === 'D') {
+            document.getElementById('q7-other-drinks-detail').classList.remove('hidden');
+        }
+    }
+    // ▲▲▲ 加入結束 ▲▲▲
+    
     if (userProfileData.q_snacks_habit) {
         const radio = document.querySelector(`input[name="q8-snacks-habit"][value="${userProfileData.q_snacks_habit}"]`);
         if (radio) {
