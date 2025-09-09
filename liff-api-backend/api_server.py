@@ -963,9 +963,57 @@ def delete_user(user_id):
             return jsonify({"status": "success", "message": "User deleted successfully."})
 
         except Exception as e:
-            conn.rollback() # 如果中途出錯，復原所有操作
+            conn.rollback()
             print(f"刪除使用者 {user_id} 時發生錯誤: {e}")
             return jsonify({"error": "Database error during deletion."}), 500
+
+
+# ===== ▼▼▼ 新增：用戶資料摘要 API ▼▼▼ =====
+@app.route('/api/user-profile-summary', methods=['GET'])
+def get_user_profile_summary():
+    user_id = request.args.get('userId')
+    if not user_id:
+        return jsonify({"error": "userId is required"}), 400
+    
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        # 取得基本資料
+        cur.execute("""
+            SELECT display_name, height, profile_weight, age, gender,
+                   target_calories, water_goal, exercise_goal,
+                   personal_notes, q_allergy_details
+            FROM user_profiles 
+            WHERE user_id = %s
+        """, (user_id,))
+        profile = cur.fetchone()
+        
+        if not profile:
+            return jsonify({})
+        
+        # 取得最近3天平均
+        cur.execute("""
+            SELECT 
+                AVG(COALESCE(breakfast_kcal,0) + COALESCE(lunch_kcal,0) + 
+                    COALESCE(dinner_kcal,0) + COALESCE(snacks_kcal,0) + 
+                    COALESCE(drinks_kcal,0)) as avg_calories,
+                AVG(water_cc) as avg_water,
+                MAX(daily_weight) as latest_weight
+            FROM daily_logs 
+            WHERE user_id = %s 
+            AND log_date >= CURRENT_DATE - INTERVAL '3 days'
+        """, (user_id,))
+        recent_stats = cur.fetchone()
+        
+        result = dict(profile)
+        if recent_stats:
+            result.update({
+                'avg_calories': round(recent_stats['avg_calories'] or 0),
+                'avg_water': round(recent_stats['avg_water'] or 0),
+                'latest_weight': recent_stats['latest_weight']
+            })
+        
+        return jsonify(result)
+# ===== ▲▲▲ 新增結束 ▲▲▲ =====
 
 
 # --- 啟動伺服器 ---
