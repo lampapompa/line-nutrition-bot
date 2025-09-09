@@ -201,13 +201,23 @@ async function loadProfileData() {
 
     // ▼▼▼ 新增：載入 AI 分析資料（加在這裡） ▼▼▼
     if (userProfileData.ai_profile_summary) {
-        const aiAnalysisContainer = document.getElementById('ai-analysis-content');
+        const aiAnalysisContainer = document.getElementById('background-analysis-content');
         aiAnalysisContainer.innerHTML = userProfileData.ai_profile_summary.replace(/\n/g, '<br>');
     }
     if (userProfileData.ai_analysis_timestamp) {
-        const timestampEl = document.getElementById('ai-analysis-timestamp');
+        const timestampEl = document.getElementById('background-analysis-timestamp');
         timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.ai_analysis_timestamp)}`;
     }
+    // ▼▼▼ 新增：載入目標分析 ▼▼▼
+    if (userProfileData.goal_analysis_summary) {
+        const goalAnalysisContainer = document.getElementById('goal-analysis-content');
+        goalAnalysisContainer.innerHTML = userProfileData.goal_analysis_summary.replace(/\n/g, '<br>');
+    }
+    if (userProfileData.goal_analysis_timestamp) {
+        const timestampEl = document.getElementById('goal-analysis-timestamp');
+        timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.goal_analysis_timestamp)}`;
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
     // ▲▲▲ 新增結束 ▲▲▲
     
     // ▼▼▼ 在這裡加入：載入問卷答案 ▼▼▼
@@ -258,6 +268,16 @@ async function loadProfileData() {
             radio.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
+
+    // ▼▼▼ 加入這段：載入其他飲料詳細內容 ▼▼▼
+    if (userProfileData.q_other_drinks_detail) {
+        document.getElementById('q7-other-drinks-detail').value = userProfileData.q_other_drinks_detail;
+        if (userProfileData.q_other_drinks === 'D') {
+            document.getElementById('q7-other-drinks-detail').classList.remove('hidden');
+        }
+    }
+    // ▲▲▲ 加入結束 ▲▲▲
+    
     if (userProfileData.q_snacks_habit) {
         const radio = document.querySelector(`input[name="q8-snacks-habit"][value="${userProfileData.q_snacks_habit}"]`);
         if (radio) {
@@ -498,6 +518,64 @@ async function handleQuestionnaireSubmit() {
 }
 // ===== ▲▲▲ 1. 新增結束 ▲▲▲ =====
 
+// ===== ▼▼▼ 新增：處理目標分析提交的函式 ▼▼▼ =====
+async function handleGoalAnalysisSubmit() {
+    const submitButton = document.getElementById('generate-goal-analysis-btn');
+    
+    // 收集目標設定資料
+    const goalData = {
+        height: document.getElementById('height').value,
+        weight: document.getElementById('profile-weight').value,
+        age: document.getElementById('age').value,
+        gender: document.getElementById('gender').value,
+        activityLevel: document.getElementById('activity-level').value,
+        bmr: userProfileData.bmr,
+        tdee: document.getElementById('tdee-display').textContent.replace(' kcal', ''),
+        targetCalories: document.getElementById('target-calories').value,
+        waterGoal: document.getElementById('water-goal').value,
+        exerciseGoal: document.getElementById('exercise-goal').value,
+        exerciseGoalText: document.getElementById('exercise-goal-text').value,
+        capsuleGoal: document.getElementById('capsule-goal').value,
+        personalNotes: document.getElementById('personal-notes').value,
+        userExercises: userExercises // 加入常用運動
+    };
+    
+    // 顯示載入中
+    const originalButtonText = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<svg class="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+    
+    try {
+        // 呼叫 API 生成分析
+        const response = await fetchAPI('/api/generate-goal-analysis', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: userToLoad,
+                goalData: goalData
+            })
+        });
+        
+        // 顯示結果
+        if (response && response.goal_analysis) {
+            document.getElementById('goal-analysis-content').innerHTML = response.goal_analysis.replace(/\n/g, '<br>');
+            if (response.goal_analysis_timestamp) {
+                document.getElementById('goal-analysis-timestamp').textContent = `分析生成時間：${formatDetailedDate(response.goal_analysis_timestamp)}`;
+            }
+            showToast('28天執行計畫已生成！');
+        } else {
+            throw new Error('後端未回傳有效的目標分析');
+        }
+        
+    } catch (error) {
+        console.error("生成目標分析失敗:", error);
+        showToast('分析生成失敗，請稍後再試');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonText;
+    }
+}
+// ===== ▲▲▲ 新增結束 ▲▲▲ =====
+
 // --- 4. UI 更新與事件處理函式 ---
 function handleLogInputChange() {
     updateGoalDashboard();
@@ -629,10 +707,12 @@ function switchTab(tabName) {
 
 // ===== ▼▼▼ 3. 新增：switchSubTab 函式，處理「我的檔案」底下的小分頁切換 ▼▼▼ =====
 function switchSubTab(subTabName) {
-    ['goal-setting-sub-tab', 'questionnaire-sub-tab', 'ai-analysis-sub-tab'].forEach(subTabId => {
+    // ▼▼▼ 【修改】加入 goal-analysis-sub-tab 和改名 background-analysis-sub-tab ▼▼▼
+    ['goal-setting-sub-tab', 'goal-analysis-sub-tab', 'questionnaire-sub-tab', 'background-analysis-sub-tab'].forEach(subTabId => {
         const subTabElement = document.getElementById(subTabId);
         if (subTabElement) subTabElement.classList.add('hidden');
     });
+    // ▲▲▲ 【修改】結束 ▲▲▲
 
     document.querySelectorAll('.sub-tab-button').forEach(button => {
         button.classList.remove('active');
@@ -1051,7 +1131,7 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
-// ===== ▼▼▼ 【修改】此函式被重寫以同時處理顏色和文字提示 ▼▼▼ =====
+// ===== ▼▼▼ 【修改】簡化函式，只處理文字不處理樣式 ▼▼▼ =====
 function updateQuestionnaireIndicator(inputElement) {
     const questionItem = inputElement.closest('.question-item');
     if (!questionItem) return;
@@ -1062,29 +1142,7 @@ function updateQuestionnaireIndicator(inputElement) {
     const inputType = inputElement.getAttribute('type');
     const inputName = inputElement.getAttribute('name');
 
-    // --- 處理視覺樣式 ---
-    if (inputType === 'radio') {
-        // 先移除同一組所有選項的 'selected' class
-        const allChoiceButtonsInGroup = questionItem.querySelectorAll('.choice-button');
-        allChoiceButtonsInGroup.forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // 只在被選中的選項上加入 'selected' class
-        if (inputElement.checked) {
-            const parentLabel = inputElement.closest('.choice-button');
-            if (parentLabel) {
-                parentLabel.classList.add('selected');
-            }
-        }
-    } else if (inputType === 'checkbox') {
-        // 對於 checkbox，只切換當前點擊的選項
-        const parentLabel = inputElement.closest('.choice-button');
-        if (parentLabel) {
-            parentLabel.classList.toggle('selected', inputElement.checked);
-        }
-    }
-
-    // --- 處理文字提示 ---
+    // 只處理文字提示，不處理樣式（樣式交給 CSS）
     if (inputType === 'radio') {
         indicator.textContent = inputElement.value;
     } else if (inputType === 'checkbox') {
@@ -1263,61 +1321,49 @@ function setupEventListeners() {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
 
-    // ===== ▼▼▼ 【修改】將原本的 change 事件改為 click 事件以獲得更佳的反饋體驗 ▼▼▼ =====
+    // ▼▼▼ 新增：綁定目標分析按鈕 ▼▼▼
+    const goalAnalysisBtn = document.getElementById('generate-goal-analysis-btn');
+    if (goalAnalysisBtn) {
+        goalAnalysisBtn.addEventListener('click', handleGoalAnalysisSubmit);
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
+    
+// ===== ▼▼▼ 【修改】簡化事件處理，避免重複 ▼▼▼ =====
     const questionnaireTab = document.getElementById('questionnaire-sub-tab');
     if (questionnaireTab) {
-        questionnaireTab.addEventListener('click', (event) => {
-            const targetLabel = event.target.closest('.choice-button');
-            if (!targetLabel) return;
-
-            const inputElement = targetLabel.querySelector('input[type="radio"], input[type="checkbox"]');
-            if (inputElement) {
-                // 手動觸發 input 的選中狀態，以確保 change 事件能被正確觸發
-                if (inputElement.type === 'radio' && !inputElement.checked) {
-                    inputElement.checked = true;
-                    // 手動觸發 change 事件，因為程式化更改 checked 狀態不會自動觸發
-                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-                } else if (inputElement.type === 'checkbox') {
-                    inputElement.checked = !inputElement.checked;
-                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-        });
-
+        // 只監聽原生的 change 事件
         questionnaireTab.addEventListener('change', (event) => {
             if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
+                // 更新文字指示器
                 updateQuestionnaireIndicator(event.target);
                 
-                // ▼▼▼ 新增：處理「其他」選項的顯示/隱藏 ▼▼▼
-                // 職業其他
+                // 處理「其他」選項的顯示/隱藏
                 if (event.target.name === 'q1-occupation') {
                     const otherInput = document.getElementById('q1-occupation-other');
                     otherInput.classList.toggle('hidden', event.target.value !== 'E');
                 }
                 
-                // 飲料其他
                 if (event.target.name === 'q7-other-drinks') {
                     const otherInput = document.getElementById('q7-other-drinks-detail');
                     otherInput.classList.toggle('hidden', event.target.value !== 'D');
                 }
                 
-                // 食物過敏
                 if (event.target.id === 'q9-allergy-checkbox') {
                     const detailInput = document.getElementById('q9-allergy-detail');
                     detailInput.classList.toggle('hidden', !event.target.checked);
                 }
                 
-                // 其他疾病
                 if (event.target.id === 'q9-other-condition-checkbox') {
                     const detailInput = document.getElementById('q9-other-condition-detail');
                     detailInput.classList.toggle('hidden', !event.target.checked);
                 }
-                // ▲▲▲ 新增結束 ▲▲▲
             }
         });
+
+
     }
     // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
-}
+}  // <-- 這個是關閉 setupEventListeners 函式的
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
 function renderUserExerciseButtons() {
