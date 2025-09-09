@@ -1051,7 +1051,7 @@ function renderWeightQuickButtons(prevWeight) {
     container.innerHTML = buttonsHTML;
 }
 
-// ===== ▼▼▼ 【修改】此函式被重寫以同時處理顏色和文字提示 ▼▼▼ =====
+// ===== ▼▼▼ 【修改】簡化函式，只處理文字不處理樣式 ▼▼▼ =====
 function updateQuestionnaireIndicator(inputElement) {
     const questionItem = inputElement.closest('.question-item');
     if (!questionItem) return;
@@ -1062,29 +1062,7 @@ function updateQuestionnaireIndicator(inputElement) {
     const inputType = inputElement.getAttribute('type');
     const inputName = inputElement.getAttribute('name');
 
-    // --- 處理視覺樣式 ---
-    if (inputType === 'radio') {
-        // 先移除同一組所有選項的 'selected' class
-        const allChoiceButtonsInGroup = questionItem.querySelectorAll('.choice-button');
-        allChoiceButtonsInGroup.forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        // 只在被選中的選項上加入 'selected' class
-        if (inputElement.checked) {
-            const parentLabel = inputElement.closest('.choice-button');
-            if (parentLabel) {
-                parentLabel.classList.add('selected');
-            }
-        }
-    } else if (inputType === 'checkbox') {
-        // 對於 checkbox，只切換當前點擊的選項
-        const parentLabel = inputElement.closest('.choice-button');
-        if (parentLabel) {
-            parentLabel.classList.toggle('selected', inputElement.checked);
-        }
-    }
-
-    // --- 處理文字提示 ---
+    // 只處理文字提示，不處理樣式（樣式交給 CSS）
     if (inputType === 'radio') {
         indicator.textContent = inputElement.value;
     } else if (inputType === 'checkbox') {
@@ -1263,58 +1241,39 @@ function setupEventListeners() {
         submitBtn.addEventListener('click', handleQuestionnaireSubmit);
     }
 
-    // ===== ▼▼▼ 【修改】將原本的 change 事件改為 click 事件以獲得更佳的反饋體驗 ▼▼▼ =====
+// ===== ▼▼▼ 【修改】簡化事件處理，避免重複 ▼▼▼ =====
     const questionnaireTab = document.getElementById('questionnaire-sub-tab');
     if (questionnaireTab) {
-        questionnaireTab.addEventListener('click', (event) => {
-            const targetLabel = event.target.closest('.choice-button');
-            if (!targetLabel) return;
-
-            const inputElement = targetLabel.querySelector('input[type="radio"], input[type="checkbox"]');
-            if (inputElement) {
-                // 手動觸發 input 的選中狀態，以確保 change 事件能被正確觸發
-                if (inputElement.type === 'radio' && !inputElement.checked) {
-                    inputElement.checked = true;
-                    // 手動觸發 change 事件，因為程式化更改 checked 狀態不會自動觸發
-                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-                } else if (inputElement.type === 'checkbox') {
-                    inputElement.checked = !inputElement.checked;
-                    inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-        });
-
+        // 只監聽原生的 change 事件
         questionnaireTab.addEventListener('change', (event) => {
             if (event.target.matches('input[type="radio"], input[type="checkbox"]')) {
+                // 更新文字指示器
                 updateQuestionnaireIndicator(event.target);
                 
-                // ▼▼▼ 新增：處理「其他」選項的顯示/隱藏 ▼▼▼
-                // 職業其他
+                // 處理「其他」選項的顯示/隱藏
                 if (event.target.name === 'q1-occupation') {
                     const otherInput = document.getElementById('q1-occupation-other');
                     otherInput.classList.toggle('hidden', event.target.value !== 'E');
                 }
                 
-                // 飲料其他
                 if (event.target.name === 'q7-other-drinks') {
                     const otherInput = document.getElementById('q7-other-drinks-detail');
                     otherInput.classList.toggle('hidden', event.target.value !== 'D');
                 }
                 
-                // 食物過敏
                 if (event.target.id === 'q9-allergy-checkbox') {
                     const detailInput = document.getElementById('q9-allergy-detail');
                     detailInput.classList.toggle('hidden', !event.target.checked);
                 }
                 
-                // 其他疾病
                 if (event.target.id === 'q9-other-condition-checkbox') {
                     const detailInput = document.getElementById('q9-other-condition-detail');
                     detailInput.classList.toggle('hidden', !event.target.checked);
                 }
-                // ▲▲▲ 新增結束 ▲▲▲
             }
         });
+
+
     }
     // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
 }
