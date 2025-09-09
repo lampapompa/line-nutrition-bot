@@ -25,18 +25,21 @@
             cursor: pointer;
             transition: all 0.2s;
             background-color: white;
+            position: relative;
         }
         .choice-button:hover {
             border-color: #a7f3d0;
             background-color: #f0fdf4;
         }
-        .choice-button.selected {
+        /* ===== ▼▼▼ 【修改】使用 CSS 選擇器自動處理選中狀態 ▼▼▼ ===== */
+        .choice-button:has(input:checked) {
             border-color: #10B981;
             background-color: #d1fae5;
             color: #065f46;
             font-weight: 500;
             box-shadow: 0 0 0 2px #a7f3d0;
         }
+        /* ===== ▲▲▲ 【修改】結束 ▲▲▲ ===== */
         .choice-button input { display: none; }
 
         input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; background: transparent; }
