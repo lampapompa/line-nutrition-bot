@@ -1363,7 +1363,6 @@ function setupEventListeners() {
 
     }
     // ===== ▲▲▲ 【修改】結束 ▲▲▲ =====
-}
 // ===== ▲▲▲ 4. 修改結束 ▲▲▲ =====
 
 function renderUserExerciseButtons() {
