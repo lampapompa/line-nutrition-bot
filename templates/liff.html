@@ -25,18 +25,21 @@
             cursor: pointer;
             transition: all 0.2s;
             background-color: white;
+            position: relative;
         }
         .choice-button:hover {
             border-color: #a7f3d0;
             background-color: #f0fdf4;
         }
-        .choice-button.selected {
+        /* ===== ▼▼▼ 【修改】使用 CSS 選擇器自動處理選中狀態 ▼▼▼ ===== */
+        .choice-button:has(input:checked) {
             border-color: #10B981;
             background-color: #d1fae5;
             color: #065f46;
             font-weight: 500;
             box-shadow: 0 0 0 2px #a7f3d0;
         }
+        /* ===== ▲▲▲ 【修改】結束 ▲▲▲ ===== */
         .choice-button input { display: none; }
 
         input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; background: transparent; }
@@ -160,9 +163,10 @@
             
             <div id="profile-main-tab" class="hidden space-y-4">
                 <div class="flex justify-center p-1 space-x-1 bg-gray-200 rounded-lg">
-                    <button onclick="switchSubTab('goal-setting')" data-sub-tab="goal-setting" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">目標設定</button>
-                    <button onclick="switchSubTab('questionnaire')" data-sub-tab="questionnaire" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">背景探索</button>
-                    <button onclick="switchSubTab('ai-analysis')" data-sub-tab="ai-analysis" class="sub-tab-button w-full px-4 py-2 text-sm font-medium text-gray-700 rounded-md">AI 分析</button>
+                    <button onclick="switchSubTab('goal-setting')" data-sub-tab="goal-setting" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">目標設定</button>
+                    <button onclick="switchSubTab('goal-analysis')" data-sub-tab="goal-analysis" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">目標分析</button>
+                    <button onclick="switchSubTab('questionnaire')" data-sub-tab="questionnaire" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">背景探索</button>
+                    <button onclick="switchSubTab('background-analysis')" data-sub-tab="background-analysis" class="sub-tab-button w-1/4 px-2 py-2 text-xs font-medium text-gray-700 rounded-md">背景分析</button>
                 </div>
                 
                 <div id="sub-tab-content">
@@ -185,22 +189,39 @@
                                 <span id="display-membership-termination" class="font-semibold text-gray-800">--</span>
                             </div>
                         </div>
-                        <div><label class="block text-sm font-medium text-gray-700">身高 (cm)</label><input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                        <div><label class="block text-sm font-medium text-gray-700">體重 (kg)</label><input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                        <div><label class="block text-sm font-medium text-gray-700">年齡</label><input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"></div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">性別</label>
-                            <select id="gender" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3"><option value="male">男性</option><option value="female">女性</option></select>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">身高 (cm)</label>
+                                <input type="number" id="height" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">體重 (kg)</label>
+                                <input type="number" id="profile-weight" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">年齡</label>
+                                <input type="number" id="age" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">活動量</label>
-                            <select id="activity-level" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
-                                <option value="1.2">久坐 (BMR x 1.2)</option>
-                                <option value="1.375">輕度活動 (BMR x 1.375)</option>
-                                <option value="1.55">中度活動 (BMR x 1.55)</option>
-                                <option value="1.725">高度活動 (BMR x 1.725)</option>
-                                <option value="1.9">極高度活動 (BMR x 1.9)</option>
-                            </select>
+                            <!-- 性別與活動量一排 -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">性別</label>
+                                <select id="gender" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                                    <option value="male">男性</option>
+                                    <option value="female">女性</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">活動量</label>
+                                <select id="activity-level" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                                    <option value="1.2">久坐 (BMR x 1.2)</option>
+                                    <option value="1.375">輕度活動 (BMR x 1.375)</option>
+                                    <option value="1.55">中度活動 (BMR x 1.55)</option>
+                                    <option value="1.725">高度活動 (BMR x 1.725)</option>
+                                    <option value="1.9">極高度活動 (BMR x 1.9)</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                             <div class="bg-emerald-50 p-3 rounded-lg"><p class="text-sm">基礎代謝率 (BMR)</p><p id="bmr-display" class="text-2xl font-bold text-emerald-600">---</p></div>
@@ -215,10 +236,17 @@
                             </div>
                             <input type="hidden" id="target-calories">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">設定每日飲水目標 (c.c.)</label>
-                            <p id="water-suggestion" class="text-xs text-gray-500 mb-1"></p>
-                            <input type="number" id="water-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                        <!-- 飲水和膠囊目標一排 -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">設定每日飲水目標 (c.c.)</label>
+                                <p id="water-suggestion" class="text-xs text-gray-500 mb-1"></p>
+                                <input type="number" id="water-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">設定每日燃脂膠囊目標 (包)</label>
+                                <input type="number" id="capsule-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" style="margin-top: 1.25rem;">
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">設定每日運動消耗目標</label>
@@ -235,14 +263,6 @@
                                 <div id="profile-quick-add-exercise" class="flex flex-wrap gap-2">
                                 </div>
                             </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">設定每日燃脂膠囊目標 (包)</label>
-                            <input type="number" id="capsule-goal" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium">個人備註</label>
-                            <textarea id="personal-notes" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" rows="3" placeholder="例如：對花生過敏、不吃牛肉"></textarea>
                         </div>
                         
                         <div class="space-y-3 pt-4 border-t">
@@ -263,7 +283,29 @@
                                 </div>
                             </div>
                         </div>
+                        <div>
+                            <label class="block text-sm font-medium">個人備註</label>
+                            <textarea id="personal-notes" class="profile-input mt-1 block w-full border border-gray-300 rounded-md py-2 px-3" rows="3" placeholder="例如：對花生過敏、不吃牛肉"></textarea>
                         </div>
+                        </div>
+
+                
+                    <!-- ▼▼▼ 新增：目標分析頁面 ▼▼▼ -->
+                    <div id="goal-analysis-sub-tab" class="hidden space-y-4">
+                        <div class="bg-white p-4 rounded-lg shadow-sm min-h-[300px]">
+                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">28天執行計畫分析</h3>
+                            <p id="goal-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
+                            <div id="goal-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
+                                <p class="text-center text-gray-500">您尚未生成執行計畫。<br>請先至「目標設定」分頁完成設定。</p>
+                            </div>
+                        </div>
+                        <div class="pt-4">
+                            <button id="generate-goal-analysis-btn" class="w-full rounded-lg bg-emerald-600 px-5 py-3 text-lg font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                                生成我的 28 天執行計畫
+                            </button>
+                        </div>
+                    </div>
+                    <!-- ▲▲▲ 新增結束 ▲▲▲ -->
 
                     <div id="questionnaire-sub-tab" class="hidden space-y-4">
                         <div class="space-y-2 text-center">
@@ -397,11 +439,11 @@
                         </div>
                         </div>
 
-                    <div id="ai-analysis-sub-tab" class="hidden space-y-4">
+                    <div id="background-analysis-sub-tab" class="hidden space-y-4">
                         <div class="bg-white p-4 rounded-lg shadow-sm min-h-[300px]">
-                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">AI 個人化分析報告</h3>
-                            <p id="ai-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
-                            <div id="ai-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
+                            <h3 class="text-xl font-bold text-center text-emerald-600 mb-4">背景個人化分析報告</h3>
+                            <p id="background-analysis-timestamp" class="text-xs text-gray-500 text-center mb-2"></p>
+                            <div id="background-analysis-content" class="text-gray-700 leading-relaxed space-y-4">
                                 <p class="text-center text-gray-500">您尚未生成分析報告。<br>請先至「背景探索」分頁完成問卷。</p>
                             </div>
                         </div>
