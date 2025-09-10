@@ -392,6 +392,11 @@ async function loadLogDataForDate(date) {
 // ===== ▼▼▼ 1. 新增：處理問卷提交與驗證的核心函式 ▼▼▼ =====
 async function handleQuestionnaireSubmit() {
     const submitButton = document.getElementById('submit-questionnaire-btn');
+    if (!submitButton) {
+        console.error('找不到提交按鈕！');
+        return;
+    }
+    
     const questionnaireContainer = document.getElementById('questionnaire-sub-tab');
 
     // --- Step 1: 必填驗證 ---
