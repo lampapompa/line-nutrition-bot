@@ -466,6 +466,14 @@ async function handleQuestionnaireSubmit() {
         const getRadioValue = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value || null;
         const getCheckboxValues = (name) => Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(cb => cb.value);
 
+        // ▼▼▼ 加入偵錯程式碼 ▼▼▼
+        console.log('===== 開始偵錯 q7-other-drinks-detail =====');
+        const q7Element = document.getElementById('q7-other-drinks-detail');
+        console.log('q7 元素是否存在:', q7Element);
+        console.log('q7 元素的值:', q7Element?.value);
+        console.log('q7 元素是否隱藏:', q7Element?.classList.contains('hidden'));
+        // ▲▲▲ 偵錯程式碼結束 ▲▲▲
+        
         const questionnaireData = {
             q1_occupation: getRadioValue('q1-occupation'),
             q1_occupation_other: document.getElementById('q1-occupation-other').value,
@@ -485,6 +493,11 @@ async function handleQuestionnaireSubmit() {
             q12_expected_change: document.getElementById('q12-expected-change').value,
         };
 
+        // ▼▼▼ 加入偵錯：檢查最終資料 ▼▼▼
+        console.log('最終的 questionnaireData:', questionnaireData);
+        console.log('q7_other_drinks_detail 的值:', questionnaireData.q7_other_drinks_detail);
+        // ▲▲▲ 偵錯結束 ▲▲▲
+        
         const response = await fetchAPI('/api/summarize-questionnaire', {
             method: 'POST',
             body: JSON.stringify({
