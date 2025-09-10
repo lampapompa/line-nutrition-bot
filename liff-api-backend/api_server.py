@@ -337,7 +337,7 @@ def handle_profile():
                     exercise_goal, exercise_goal_text, capsule_goal, admin_notes, status,
                     expiry_timestamp, membership_start_date, service_termination_date, is_vip,
                     q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
-                    q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
+                    q_stress_level, q_meal_source, q_daily_water, q_other_drinks, q_other_drinks_detail, 
                     q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                     q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
                     ai_analysis_timestamp,
@@ -362,7 +362,7 @@ def handle_profile():
                         exercise_goal, exercise_goal_text, capsule_goal, admin_notes, status,
                         expiry_timestamp, membership_start_date, service_termination_date, is_vip,
                         q_occupation, q_occupation_other, q_sleep_hours, q_exercise_habit, 
-                        q_stress_level, q_meal_source, q_daily_water, q_other_drinks, 
+                        q_stress_level, q_meal_source, q_daily_water, q_other_drinks, q_other_drinks_detail, 
                         q_snacks_habit, q_health_conditions, q_allergy_details, q_other_illness,
                         q_past_challenges, q_motivation, q_expected_change, ai_profile_summary,
                         ai_analysis_timestamp,  # 這裡要逗號
