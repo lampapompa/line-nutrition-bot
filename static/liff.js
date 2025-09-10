@@ -538,7 +538,7 @@ async function handleQuestionnaireSubmit() {
             }
             // ▲▲▲ 新增結束 ▲▲▲
             showToast('個人化分析已生成！');
-            switchSubTab('ai-analysis');
+            switchSubTab('background-analysis');
         } else {
             throw new Error('後端未回傳有效的 AI 總結');
         }
