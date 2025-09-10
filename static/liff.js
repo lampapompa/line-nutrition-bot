@@ -202,20 +202,30 @@ async function loadProfileData() {
     // ▼▼▼ 新增：載入 AI 分析資料（加在這裡） ▼▼▼
     if (userProfileData.ai_profile_summary) {
         const aiAnalysisContainer = document.getElementById('background-analysis-content');
-        aiAnalysisContainer.innerHTML = userProfileData.ai_profile_summary.replace(/\n/g, '<br>');
+        if (aiAnalysisContainer) {
+            aiAnalysisContainer.innerHTML = userProfileData.ai_profile_summary.replace(/\n/g, '<br>');
+        } else {
+            console.error('找不到 background-analysis-content 元素');
+        }
     }
     if (userProfileData.ai_analysis_timestamp) {
         const timestampEl = document.getElementById('background-analysis-timestamp');
-        timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.ai_analysis_timestamp)}`;
+        if (timestampEl) {
+            timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.ai_analysis_timestamp)}`;
+        }
     }
     // ▼▼▼ 新增：載入目標分析 ▼▼▼
     if (userProfileData.goal_analysis_summary) {
         const goalAnalysisContainer = document.getElementById('goal-analysis-content');
-        goalAnalysisContainer.innerHTML = userProfileData.goal_analysis_summary.replace(/\n/g, '<br>');
+        if (goalAnalysisContainer) {  // 加入檢查
+            goalAnalysisContainer.innerHTML = userProfileData.goal_analysis_summary.replace(/\n/g, '<br>');
+        }
     }
     if (userProfileData.goal_analysis_timestamp) {
         const timestampEl = document.getElementById('goal-analysis-timestamp');
-        timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.goal_analysis_timestamp)}`;
+        if (timestampEl) {  // 加入檢查
+            timestampEl.textContent = `分析生成時間：${formatDetailedDate(userProfileData.goal_analysis_timestamp)}`;
+        }
     }
     // ▲▲▲ 新增結束 ▲▲▲
     // ▲▲▲ 新增結束 ▲▲▲
@@ -513,11 +523,18 @@ async function handleQuestionnaireSubmit() {
 
         if (response && response.ai_summary) {
             const aiAnalysisContainer = document.getElementById('ai-analysis-content');
-            aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>');
+            // 加入檢查，確保元素存在
+            if (aiAnalysisContainer) {
+                aiAnalysisContainer.innerHTML = response.ai_summary.replace(/\n/g, '<br>');
+            } else {
+                console.error('找不到 ai-analysis-content 元素');
+            }
             // ▼▼▼ 新增：顯示分析時間 ▼▼▼
             if (response.ai_analysis_timestamp) {
                 const timestampEl = document.getElementById('ai-analysis-timestamp');
-                timestampEl.textContent = `分析生成時間：${formatDetailedDate(response.ai_analysis_timestamp)}`;
+                if (timestampEl) {
+                    timestampEl.textContent = `分析生成時間：${formatDetailedDate(response.ai_analysis_timestamp)}`;
+                }
             }
             // ▲▲▲ 新增結束 ▲▲▲
             showToast('個人化分析已生成！');
@@ -528,6 +545,8 @@ async function handleQuestionnaireSubmit() {
 
     } catch (error) {
         console.error("提交問卷或生成AI分析失敗:", error);
+        console.error("詳細錯誤訊息:", error.message);
+        console.error("錯誤堆疊:", error.stack);
         showToast('分析生成失敗，請稍後再試');
     } finally {
         submitButton.disabled = false;
